@@ -26,7 +26,7 @@ const int CLK_PIN = 18;
 const int CS_PIN = 16;
 #define MAX_INPUT 8 // 最大的輸入數位
 byte segments[MAX_INPUT]; // 每個數位的LED段的狀態
-int x=0;
+int x = 0;
 
 // GPIO pin for protection switch
 const int PROTECTION_SWITCH_PIN = 23;
@@ -144,7 +144,7 @@ void loop() {
   // Handle button input
   handleButtonInput();
   test();
-  show_7seg(x++);
+  show_7seg(x++,0);
   // Delay
   //delay(1000);
 }
@@ -266,10 +266,10 @@ void test() {
 }
 
 
-void show_7seg(int remainder,int dp) {
+void show_7seg(int num, int dp) {
 
-  byte tenmillions = count / 10000000;
-  remainder = count % 10000000;
+  byte tenmillions = num / 10000000;
+  remainder = num % 10000000;
 
   byte millions = remainder / 1000000;
   remainder = remainder % 1000000;
