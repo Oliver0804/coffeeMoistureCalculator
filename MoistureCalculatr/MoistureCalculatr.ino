@@ -1,8 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_SHT31.h>
 #include <HX711.h>
-#include <MD_Parola.h>
-#include <MD_MAX72xx.h>
 #include <PID_v1_bc.h>
 
 
@@ -70,7 +68,7 @@ void setup() {
 
   myPID.SetMode(AUTOMATIC);
   myPID.SetOutputLimits(0, 255);
-  myPID.SetSampleTime(1000);
+  myPID.SetSampleTime(100);
 
   initialise();//7seg
 
@@ -267,31 +265,31 @@ void test() {
 
 
 void show_7seg(int num, int dp) {
-
+  unsigned long rem;
   byte tenmillions = num / 10000000;
-  remainder = num % 10000000;
+  rem = num % 10000000;
 
-  byte millions = remainder / 1000000;
-  remainder = remainder % 1000000;
+  byte millions = rem / 1000000;
+  rem = rem % 1000000;
 
-  byte hundredthou = remainder / 100000;
-  remainder = remainder % 100000;
+  byte hundredthou = rem / 100000;
+  rem = rem % 100000;
 
-  byte tenthou = remainder / 10000;
-  remainder = remainder % 10000;
+  byte tenthou = rem / 10000;
+  rem = rem % 10000;
 
-  byte thou = remainder / 1000;
-  remainder = remainder % 1000;
+  byte thou = rem / 1000;
+  rem = rem % 1000;
 
-  byte hundreds = remainder / 100;
-  remainder = remainder % 100;
+  byte hundreds = rem / 100;
+  rem = rem % 100;
 
-  byte tens = remainder / 10;
-  remainder = remainder % 10;
+  byte tens = rem / 10;
+  rem = rem % 10;
 
   output7seg(0x01, thou, 0); // thousands
   output7seg(0x02, hundreds, 0); // hundreds
   output7seg(0x03, tens, 0); // tens
-  output7seg(0x04, remainder, 0); // units
+  output7seg(0x04, rem, 0); // units
 
 }
