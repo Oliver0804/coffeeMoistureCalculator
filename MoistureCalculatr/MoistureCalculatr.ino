@@ -2,11 +2,12 @@
 #include <Adafruit_SHT31.h>
 #include <HX711.h>
 #include <PID_v1_bc.h>
-
+//SDA 21
+//SCL 22
 
 // Relay pins
-const int HEATER_PIN = 25;
-const int FAN_PIN = 26;
+const int HEATER_PIN = 26;
+const int FAN_PIN = 25;
 const int MOTOR_PIN = 32;
 
 // Load cell pins
@@ -30,8 +31,8 @@ int x = 0;
 const int PROTECTION_SWITCH_PIN = 23;
 
 // PID constants
-const double Kp = 2, Ki = 5, Kd = 1;
-double setPoint = 85, input, output;
+const double Kp = 20, Ki = 4, Kd = 3;
+double setPoint = 75, input, output;
 
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
 HX711 scale;
@@ -40,10 +41,15 @@ HX711 scale;
 //PID_v1_bc myPID(&input, &output, &setPoint, Kp, Ki, Kd, DIRECT);
 PID myPID(&input, &output, &setPoint, Kp, Ki, Kd, DIRECT);
 
-float calculateMoisture(float currentWeight, float dryWeight, float wetWeight) {
-  float moisturePercentage = 0;
-  moisturePercentage = (wetWeight - dryWeight) / dryWeight * 100;
-  return moisturePercentage;
+int WindowSize = 250;
+unsigned long windowStartTime;
+
+float calculateMoisture(float currentWeight, float dryWeightPer100g, float wetWeightPer100g) {
+float dryWeight = currentWeight / 100 * dryWeightPer100g;
+float wetWeight = currentWeight / 100 * wetWeightPer100g;
+float moisturePercentage = 0;
+moisturePercentage = (wetWeight - dryWeight) / dryWeight * 100;
+return moisturePercentage;
 }
 
 void setup() {
@@ -58,21 +64,17 @@ void setup() {
   pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
   pinMode(BUTTON_MINUS_PIN, INPUT_PULLUP);
   pinMode(BUTTON_CONFIRM_PIN, INPUT_PULLUP);
-  Serial.print("A: ");
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
   scale.set_scale(2280.f); // calibration factor
   scale.tare();
-  Serial.print("B: ");
   sht31.begin(0x44);
-  Serial.print("C: ");
 
+
+  myPID.SetOutputLimits(0, WindowSize);
+  myPID.SetSampleTime(250);
   myPID.SetMode(AUTOMATIC);
-  myPID.SetOutputLimits(0, 255);
-  myPID.SetSampleTime(100);
-
   initialise();//7seg
-
-  Serial.print("D: ");
+  
 
 }
 
@@ -95,39 +97,49 @@ void loop() {
   // Read temperature and humidity
   float temperature = sht31.readTemperature();
   float humidity = sht31.readHumidity();
-  // temperature = 50;
-  // humidity = 50;
+
 
   // Read the current weight
   float currentWeight = scale.get_units(10);
-  Serial.print("F: ");
 
   // Calculate the moisture percentage
-  float moisturePercentage = calculateMoisture(currentWeight, 0, 100);
+  float moisturePercentage = calculateMoisture(currentWeight, 50, 100);
 
   // Update PID input
   input = temperature;
 
   myPID.Compute();
-
+  moisturePercentage=20;
   // Heater control
-  if (output >= 5 && moisturePercentage >= 20) {
+
+  if (output >= (WindowSize/2) && moisturePercentage >= 20) {
     digitalWrite(HEATER_PIN, HIGH);
     Serial.println("HEATING");
   } else {
     digitalWrite(HEATER_PIN, LOW);
   }
-
+    /*
+  if (millis() - windowStartTime > WindowSize)
+  { //time to shift the Relay Window
+    windowStartTime += WindowSize;
+  }
+  if (output < millis() - windowStartTime) {
+    digitalWrite(HEATER_PIN, HIGH);
+  }
+  else {
+    digitalWrite(HEATER_PIN, LOW);
+  }
+*/
   // Fan control
-  if (temperature > 40) {
+  if (temperature > 30) {
     digitalWrite(FAN_PIN, HIGH);
     Serial.println("FAN WORKING");
-  } else if (temperature < 35) {
+  } else if (temperature < 28) {
     digitalWrite(FAN_PIN, LOW);
   }
 
 
-  Serial.print("@@@@@@@@");
+  Serial.print("Temperature: ");
   Serial.println(temperature);
   Serial.print("Humidity: ");
   Serial.println(humidity);
@@ -137,14 +149,16 @@ void loop() {
   Serial.println(moisturePercentage);
   Serial.print("PID Output: ");
   Serial.println(output);
-
+  Serial.print("windowStartTime: ");
+  Serial.println(windowStartTime);
 
   // Handle button input
   handleButtonInput();
-  test();
-  show_7seg(x++,0);
+  
+  show_7seg(int(temperature*10),0);
+
   // Delay
-  //delay(1000);
+  delay(250);
 }
 
 // Update the displayError function
@@ -154,13 +168,13 @@ void displayError() {
 // Update the displayTemperature function
 void displayTemperature(float temperature) {
   char buf[5];
-  snprintf(buf, sizeof(buf), "%03d", (int)temperature);
+  //snprintf(buf, sizeof(buf), "%03d", (int)temperature);
 }
 
 // Update the displayMoisturePercentage function
 void displayMoisturePercentage(float moisturePercentage) {
   char buf[5];
-  snprintf(buf, sizeof(buf), "%03d", (int)moisturePercentage);
+  //snprintf(buf, sizeof(buf), "%03d", (int)moisturePercentage);
 }
 
 void handleButtonInput() {
@@ -196,6 +210,38 @@ void initialise()
   pinMode(DIN_PIN, OUTPUT);
   pinMode(CS_PIN, OUTPUT);
   pinMode(CLK_PIN, OUTPUT);
+  // For test mode (all digits on) set to 0x01. Normally we want this off (0x00)
+  output7seg(0x0f, 0x0, 2);
+
+  // Set all digits off initially
+  output7seg(0x0c, 0x0, 2);
+
+  // Set brightness for the digits to high(er) level than default minimum (Intensity Register Format)
+  output7seg(0x0a, 0x02, 2);
+
+  // Set decode mode for ALL digits to output actual ASCII chars rather than just
+  // individual segments of a digit
+  output7seg(0x09, 0xFF, 2);
+
+  // Set first digit (right most) to '5'
+  output7seg(0x01, 0x05, 2);
+
+  // Set next digits to 8 7 6 (Code B Font)
+  output7seg(0x02, 0x06, 2);
+  output7seg(0x03, 0x07, 2);
+  output7seg(0x04, 0x08, 2);
+
+  // If first four digits not set it will display rubbish data (Code B Font) so use 'blank' from Register Data
+  output7seg(0x05, 0x0F, 2);
+  output7seg(0x06, 0x0F, 2);
+  output7seg(0x07, 0x0F, 2);
+  output7seg(0x08, 0x0F, 2);
+
+  // Ensure ALL digits are displayed (Scan Limit Register)
+  output7seg(0x0b, 0x07, 2);
+
+  // Turn display ON (boot up = shutdown display)
+  output7seg(0x0c, 0x01, 2);
 }
 
 
@@ -213,6 +259,7 @@ void output7seg(byte address, byte data, byte dpPosition)
     data = 0x0F;
     shiftOut(DIN_PIN, CLK_PIN, MSBFIRST, address);
     shiftOut(DIN_PIN, CLK_PIN, MSBFIRST, data);
+
     digitalWrite(CS_PIN, HIGH);
     return ;
   }
@@ -260,7 +307,6 @@ void test() {
   output7seg(0x04, remainder, 0); // units
   //delay(50);
 
-  count ++;
 }
 
 
@@ -289,7 +335,7 @@ void show_7seg(int num, int dp) {
 
   output7seg(0x01, thou, 0); // thousands
   output7seg(0x02, hundreds, 0); // hundreds
-  output7seg(0x03, tens, 0); // tens
+  output7seg(0x03, tens, 1); // tens
   output7seg(0x04, rem, 0); // units
 
 }
