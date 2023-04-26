@@ -31,7 +31,7 @@ int x = 0;
 const int PROTECTION_SWITCH_PIN = 23;
 
 // PID constants
-const double Kp = 20, Ki = 4, Kd = 3;
+const double Kp = 20, Ki = 4, Kd = 8;
 double setPoint = 75, input, output;
 
 Adafruit_SHT31 sht31 = Adafruit_SHT31();
