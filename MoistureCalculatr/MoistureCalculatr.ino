@@ -124,10 +124,10 @@ void loop() {
 
   // Update PID input
   if (run_mode == true) {
-    
+
     // Motor control
     digitalWrite(MOTOR_PIN, HIGH);
-    
+
     Serial.println("PID running...");
 
     input = temperature;
@@ -156,6 +156,10 @@ void loop() {
       Serial.println("Drying completed...");
       delay(1000);
     }
+  } else {
+    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(FAN_PIN, LOW);
+    digitalWrite(MOTOR_PIN, LOW);
   }
   /*
     if (millis() - windowStartTime > WindowSize)
