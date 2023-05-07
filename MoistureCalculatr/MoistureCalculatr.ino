@@ -9,7 +9,7 @@
 const int HEATER_PIN = 26;
 const int FAN_PIN = 25;
 const int MOTOR_PIN = 32;
-
+const int NULL_PIN = 33;
 // Load cell pins
 const int LOADCELL_DOUT_PIN = 13;
 const int LOADCELL_SCK_PIN = 14;
@@ -28,6 +28,7 @@ const int CS_PIN2 = 15;
 byte segments[MAX_INPUT]; // 每個數位的LED段的狀態
 int x = 0;
 bool run_mode = 0;
+float setMoisturePercentage = 25;
 
 float currentWeight = 0;
 float goWeight = 0;
@@ -66,6 +67,8 @@ void setup() {
   pinMode(HEATER_PIN, OUTPUT);
   pinMode(FAN_PIN, OUTPUT);
   pinMode(MOTOR_PIN, OUTPUT);
+  pinMode(NULL_PIN, OUTPUT);
+  digitalWrite(NULL_PIN, LOW);
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
 
   pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
@@ -106,8 +109,6 @@ void loop() {
     return;
   } else {
 
-    // Motor control
-    digitalWrite(MOTOR_PIN, HIGH);
   }
 
   // Read temperature and humidity
@@ -123,6 +124,10 @@ void loop() {
 
   // Update PID input
   if (run_mode == true) {
+    
+    // Motor control
+    digitalWrite(MOTOR_PIN, HIGH);
+    
     Serial.println("PID running...");
 
     input = temperature;
@@ -134,6 +139,22 @@ void loop() {
       Serial.println("HEATING");
     } else {
       digitalWrite(HEATER_PIN, LOW);
+    }
+
+    // Fan control
+    if (temperature > 30) {
+      digitalWrite(FAN_PIN, HIGH);
+      Serial.println("FAN WORKING");
+    } else if (temperature < 28) {
+      digitalWrite(FAN_PIN, LOW);
+    }
+    if (moisturePercentage < setMoisturePercentage) {
+      run_mode = 0;
+      digitalWrite(HEATER_PIN, LOW);
+      digitalWrite(FAN_PIN, LOW);
+      digitalWrite(MOTOR_PIN, LOW);
+      Serial.println("Drying completed...");
+      delay(1000);
     }
   }
   /*
@@ -148,13 +169,6 @@ void loop() {
     digitalWrite(HEATER_PIN, LOW);
     }
   */
-  // Fan control
-  if (temperature > 30) {
-    digitalWrite(FAN_PIN, HIGH);
-    Serial.println("FAN WORKING");
-  } else if (temperature < 28) {
-    digitalWrite(FAN_PIN, LOW);
-  }
 
   Serial.println("==========");
   Serial.print("Running: ");
@@ -220,7 +234,8 @@ void handleButtonInput() {
   } else if (digitalRead(BUTTON_MINUS_PIN) == LOW) {
     if (setPoint >= 5) {
       setPoint -= 5;
-    }    lastButtonPress = now;
+    }
+    lastButtonPress = now;
     Serial.println("-------");
 
   } else if (digitalRead(BUTTON_CONFIRM_PIN) == LOW) {
@@ -389,6 +404,7 @@ void test() {
 
 void show_7seg(int num, int dp, int cs_num) {
   unsigned long rem;
+  if (num < 0)num = 0;
   byte tenmillions = num / 10000000;
   rem = num % 10000000;
 
@@ -409,7 +425,7 @@ void show_7seg(int num, int dp, int cs_num) {
 
   byte tens = rem / 10;
   rem = rem % 10;
-  int a=0, b=0, c=0, d=0;
+  int a = 0, b = 0, c = 0, d = 0;
   switch (dp) {
     case 4:
       a = 1;
