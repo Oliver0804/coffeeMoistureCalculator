@@ -8,8 +8,8 @@
 // Relay pins
 const int HEATER_PIN = 26;
 const int FAN_PIN = 25;
-const int MOTOR_PIN = 32;
-const int NULL_PIN = 33;
+const int MOTOR_PIN = 33;
+const int NULL_PIN = 32;
 // Load cell pins
 const int LOADCELL_DOUT_PIN = 13;
 const int LOADCELL_SCK_PIN = 14;
