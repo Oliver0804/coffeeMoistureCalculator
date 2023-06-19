@@ -8,8 +8,8 @@
 // Relay pins
 const int HEATER_PIN = 26;
 const int FAN_PIN = 25;
-const int MOTOR_PIN = 33;
-const int NULL_PIN = 32;
+const int MOTOR_PIN = 32;
+const int NULL_PIN = 33;
 // Load cell pins
 const int LOADCELL_DOUT_PIN = 13;
 const int LOADCELL_SCK_PIN = 14;
@@ -74,7 +74,22 @@ void setup() {
   pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
   pinMode(BUTTON_MINUS_PIN, INPUT_PULLUP);
   pinMode(BUTTON_CONFIRM_PIN, INPUT_PULLUP);
+  while (0) {
+    digitalWrite(MOTOR_PIN, HIGH);
+    delay(1000);
+    digitalWrite(FAN_PIN, HIGH);
+    delay(1000);
+    digitalWrite(HEATER_PIN, HIGH);
+    delay(1000);
 
+    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(FAN_PIN, LOW);
+    digitalWrite(MOTOR_PIN, LOW);
+
+    while (1) {}
+
+
+  }
   Serial.println("init scale...");
 
   scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
@@ -118,10 +133,10 @@ void loop() {
 
   // Read the current weight
   currentWeight = scale.get_units(10);
-  //moisturePercentage=20;
+
   // Calculate the moisture percentage
   float moisturePercentage = calculateMoisture(currentWeight);
-
+  //moisturePercentage = 30; //for test PID runing
   // Update PID input
   if (run_mode == true) {
 
@@ -133,7 +148,7 @@ void loop() {
     input = temperature;
     myPID.Compute();
     // Heater control
-
+    //沒有重量的時候也不運行
     if (output >= (WindowSize / 2) && moisturePercentage >= 20) {
       digitalWrite(HEATER_PIN, HIGH);
       Serial.println("HEATING");
@@ -155,6 +170,9 @@ void loop() {
       digitalWrite(MOTOR_PIN, LOW);
       Serial.println("Drying completed...");
       delay(1000);
+    } else {
+      Serial.println("Drying...");
+
     }
   } else {
     digitalWrite(HEATER_PIN, LOW);
@@ -202,6 +220,23 @@ void loop() {
   }
   // Delay
   delay(100);
+  //*test
+  int xxx = 0;
+  while (0) {
+    show_7seg(int(xxx++ * 1), 1, CS_PIN1);
+    if (xxx > 250)xxx = 0;
+    Serial.println("HEATER LOW");
+    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(FAN_PIN, LOW);
+    digitalWrite(MOTOR_PIN, LOW);
+    delay(250);
+    Serial.println("HEATER HIGH");
+    digitalWrite(HEATER_PIN, HIGH);
+    digitalWrite(FAN_PIN, HIGH);
+    digitalWrite(MOTOR_PIN, HIGH);
+    delay(250);
+
+  }
 }
 
 // Update the displayError function
