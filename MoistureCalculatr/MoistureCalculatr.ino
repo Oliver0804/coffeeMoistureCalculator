@@ -69,16 +69,28 @@ Adafruit_SHT31 sht31 = Adafruit_SHT31();
 
 //GPIO interrupt
 struct Button {
-    const uint8_t PIN;
-    uint32_t numberKeyPresses;
-    bool pressed;
+  const uint8_t PIN;
+  uint32_t numberKeyPresses;
+  bool pressed;
 };
 
-Button buttonPLUS = {BUTTON_PLUS_PIN, 0, false};
-Button buttonMINUS = {BUTTON_MINUS_PIN, 0, false};
-Button buttonENTER = {BUTTON_ENTER_PIN, 0, false};
+Button buttonPlus = {BUTTON_PLUS_PIN, 0, false};
+Button buttonMinus = {BUTTON_MINUS_PIN, 0, false};
+Button buttonEnter = {BUTTON_ENTER_PIN, 0, false};
 
-void IRAM_ATTR isr(void* arg) {
+void IRAM_ATTR isrPlus(void* arg) {
+    Button* s = static_cast<Button*>(arg);
+    s->numberKeyPresses += 1;
+    s->pressed = true;
+}
+
+void IRAM_ATTR isrMinus(void* arg) {
+    Button* s = static_cast<Button*>(arg);
+    s->numberKeyPresses += 1;
+    s->pressed = true;
+}
+
+void IRAM_ATTR isrEnter(void* arg) {
     Button* s = static_cast<Button*>(arg);
     s->numberKeyPresses += 1;
     s->pressed = true;
@@ -119,11 +131,23 @@ void init_gpio() {
   //保護開關,未啟用
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
   //按鈕相關
-  pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_MINUS_PIN, INPUT_PULLUP);
-  pinMode(BUTTON_ENTER_PIN, INPUT_PULLUP);
+  //pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
+  //pinMode(BUTTON_MINUS_PIN, INPUT_PULLUP);
+  //pinMode(BUTTON_ENTER_PIN, INPUT_PULLUP);
 
   Serial.println("GPIO ready...");
+}
+
+
+void init_interruptGPIO() {
+  Serial.println("init interruptGPIO...");
+    pinMode(buttonPlus.PIN, INPUT_PULLUP);
+    attachInterruptArg(buttonPlus.PIN, isrPlus, &buttonPlus, FALLING);
+    pinMode(buttonMinus.PIN, INPUT_PULLUP);
+    attachInterruptArg(buttonMinus.PIN, isrMinus, &buttonMinus, FALLING);
+    pinMode(buttonEnter.PIN, INPUT_PULLUP);
+    attachInterruptArg(buttonEnter.PIN, isrEnter, &buttonEnter, FALLING);
+  Serial.println("interruptGPIO ready...");
 }
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
@@ -184,20 +208,20 @@ void controlMotor(bool state) {
 }
 
 
-void checkButton(){
-      if (buttonPLUS.pressed) {
-        Serial.printf("buttonPLUS has been pressed %u times\n", buttonPLUS.numberKeyPresses);
-        buttonPLUS.pressed = false;
-    }
-    if (buttonMINUS.pressed) {
-        Serial.printf("buttonMINUS has been pressed %u times\n", buttonMINUS.numberKeyPresses);
-        buttonMINUS.pressed = false;
-    }
-    if (buttonENTER.pressed) {
-        Serial.printf("buttonENTER has been pressed %u times\n", buttonENTER.numberKeyPresses);
-        buttonENTER.pressed = false;
-    }
-    }
+void checkButton() {
+  if (buttonPlus.pressed) {
+    Serial.printf("buttonPlus has been pressed %u times\n", buttonPlus.numberKeyPresses);
+    buttonPlus.pressed = false;
+  }
+  if (buttonMinus.pressed) {
+    Serial.printf("buttonMinus has been pressed %u times\n", buttonMinus.numberKeyPresses);
+    buttonMinus.pressed = false;
+  }
+  if (buttonEnter.pressed) {
+    Serial.printf("buttonEnter has been pressed %u times\n", buttonEnter.numberKeyPresses);
+    buttonEnter.pressed = false;
+  }
+}
 // 主函數
 void runPid() {
   if (run_mode == true) {
@@ -230,19 +254,12 @@ void runPid() {
     controlMotor(false);
   }
 }
-void init_interruptGPIO(){
 
-    pinMode(buttonPLUS.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonPLUS.PIN, isr, &buttonPLUS, FALLING);
-    pinMode(buttonMINUS.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonMINUS.PIN, isr, &buttonMINUS, FALLING);
-    pinMode(buttonENTER.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonENTER.PIN, isr, &buttonENTER, FALLING);
-  }
 
 void setup() {
   Serial.begin(115200);
   init_gpio();
+  init_interruptGPIO();
   test_gpio(test_init);
   init_scale();
   init_sht31();
@@ -251,6 +268,8 @@ void setup() {
 }
 void print_info(int debugLevel) {
   if (debugLevel) {
+    Serial.print("==========");
+    Serial.print(String(millis()/1000));
     Serial.println("==========");
     Serial.print("Running: ");
     Serial.println(run_mode);
@@ -305,7 +324,7 @@ void loop() {
   //moisturePercentage = 30; //for test PID runing
   // Update PID input
   /*
-  if (run_mode == true) {
+    if (run_mode == true) {
     // Motor control
     digitalWrite(MOTOR_PIN, HIGH);
     Serial.println("PID running...");
@@ -339,17 +358,17 @@ void loop() {
       Serial.println("Drying...");
 
     }
-  } else {
+    } else {
     digitalWrite(HEATER_PIN, LOW);
     digitalWrite(FAN_PIN, LOW);
     digitalWrite(MOTOR_PIN, LOW);
-  }*/
+    }*/
 
   runPid(); //溫度控制運算
   print_info(true); //true 打印資訊
   // Handle button input
-  handleButtonInput();
-
+  //handleButtonInput();
+  readButtonInterrupt();
   //show_7seg(int(temperature*10),0);
   show_7seg(int(currentWeight * 1), 1, CS_PIN1);
   if (run_mode == 1) {
@@ -396,6 +415,36 @@ void displayMoisturePercentage(float moisturePercentage) {
   char buf[5];
   //snprintf(buf, sizeof(buf), "%03d", (int)moisturePercentage);
 }
+
+void readButtonInterrupt(){
+      if (buttonPlus.pressed) {
+        if (setPoint <= 250) {
+            setPoint += 5;
+        }
+        buttonPlus.pressed = false;
+        Serial.println("++++++++");
+    } 
+
+    if (buttonMinus.pressed) {
+        if (setPoint >= 5) {
+            setPoint -= 5;
+        }
+        buttonMinus.pressed = false;
+        Serial.println("-------");
+    }
+
+    if (buttonEnter.pressed) {
+        goWeight = currentWeight;
+        Serial.println("@@@@@@@");
+        run_mode = !run_mode;
+        myPID.SetMode(AUTOMATIC);
+        buttonEnter.pressed = false;
+    }
+
+    Serial.print("Setpoint: ");
+    Serial.println(setPoint);
+  
+  }
 
 void handleButtonInput() {
   static unsigned long lastButtonPress = 0;
@@ -522,10 +571,9 @@ void init_7seg() {
   pinMode(CS_PIN1, OUTPUT);
   pinMode(CS_PIN2, OUTPUT);
   pinMode(CLK_PIN, OUTPUT);
-
+  //設置初始化
   setup_7seg(CS_PIN1);
   setup_7seg(CS_PIN2);
-
   Serial.println("7seg ready...");
 }
 
@@ -580,31 +628,31 @@ void divide(unsigned long &num, byte &result, unsigned long divider) {
   result = num / divider;
   num %= divider;
 }
- 
+
 void show_7seg(int num, int dp, int cs_num) {
   if (num < 0) num = 0;
-  
+
   unsigned long num_temp = num;
   byte values[8];
   unsigned long dividers[8] = {10000000, 1000000, 100000, 10000, 1000, 100, 10, 1};
-  
+
   // 使用迴圈進行除法和取餘數操作
   for (int i = 0; i < 8; ++i) {
     divide(num_temp, values[i], dividers[i]);
   }
-  
+
   int dp_states[4] = {0};
   if (dp >= 1 && dp <= 4) {
-    dp_states[dp - 1] = 1; 
+    dp_states[dp - 1] = 1;
   }
-  
+
   // 使用迴圈呼叫output7seg
   for (int i = 0; i < 4; ++i) {
     output7seg(i + 1, values[3 - i], dp_states[i], cs_num);
   }
 }
 /*
-void show_7seg_old(int num, int dp, int cs_num) {
+  void show_7seg_old(int num, int dp, int cs_num) {
   unsigned long rem;
   if (num < 0)num = 0;
   byte tenmillions = num / 10000000;
@@ -648,4 +696,4 @@ void show_7seg_old(int num, int dp, int cs_num) {
   output7seg(0x03, tens, c, cs_num); // tens
   output7seg(0x04, rem, d, cs_num); // units
 
-}*/
+  }*/
