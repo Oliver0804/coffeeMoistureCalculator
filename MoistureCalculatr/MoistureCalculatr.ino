@@ -222,7 +222,7 @@ void checkButton() {
     buttonEnter.pressed = false;
   }
 }
-// 主函數
+// pid控制
 void runPid() {
   if (run_mode == true) {
     controlMotor(true);
@@ -244,7 +244,7 @@ void runPid() {
       controlFan(false);
       controlMotor(false);
       Serial.println("Drying completed...");
-      delay(1000);
+      //delay(1000);
     } else {
       Serial.println("Drying...");
     }
@@ -289,7 +289,6 @@ void print_info(int debugLevel) {
 }
 
 int getTempHumi() {
-
   // 讀取溫度和濕度
   temperature = sht31.readTemperature();
   humidity = sht31.readHumidity();
@@ -377,8 +376,8 @@ void loop() {
     show_7seg(int(setPoint * 1), 0, CS_PIN2);
   }
   // Delay
-  delay(100);
-  //*test
+  //delay(100);
+  //test code
   //testPulseEffect();測試脈衝影響
 }
 
