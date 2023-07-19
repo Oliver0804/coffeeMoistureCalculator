@@ -165,20 +165,35 @@ void init_interruptGPIO() {
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
   while (enable) {
+    Serial.println("test motor...");
     digitalWrite(MOTOR_PIN_1, HIGH);
+    delay(5000);
     digitalWrite(MOTOR_PIN_2, HIGH);
-    delay(1000);
-    digitalWrite(FAN_PIN, HIGH);
-    delay(1000);
-    digitalWrite(HEATER_PIN_1, HIGH);
-    digitalWrite(HEATER_PIN_2, HIGH);
-    delay(1000);
-    digitalWrite(HEATER_PIN_1, LOW);
-    digitalWrite(HEATER_PIN_2, LOW);
-    digitalWrite(FAN_PIN, LOW);
+    delay(5000);
     digitalWrite(MOTOR_PIN_1, LOW);
     digitalWrite(MOTOR_PIN_2, LOW);
+    delay(5000);
+    Serial.println("test fans...");
+    digitalWrite(FAN_PIN, HIGH);
+    delay(5000);
+    digitalWrite(FAN_PIN, LOW);
+    delay(5000);
+    Serial.println("test heater1...");
+    digitalWrite(HEATER_PIN_1, HIGH);
+    digitalWrite(HEATER_PIN_2, LOW);
+    delay(5000);
+    Serial.println("test heater2...");
+    digitalWrite(HEATER_PIN_2, HIGH);
+    digitalWrite(HEATER_PIN_1, LOW);
+    delay(5000);
+    Serial.println("test heaterall...");
+    digitalWrite(HEATER_PIN_1, HIGH);
+    digitalWrite(HEATER_PIN_2, HIGH);
+    delay(5000);
+    digitalWrite(HEATER_PIN_1, LOW);
+    digitalWrite(HEATER_PIN_2, LOW);
     Serial.println("test okay...");
+    delay(5000);
     //while (1) {}
   }
 }
