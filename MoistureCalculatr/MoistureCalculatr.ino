@@ -10,9 +10,13 @@
 */
 //引腳定應 start
 // Relay pins
-const int HEATER_PIN = 26;
-const int FAN_PIN = 25;
-const int MOTOR_PIN = 32;
+const int HEATER_PIN_1 = 26;
+const int FAN_PIN = -1;
+const int HEATER_PIN_2 = 25;
+
+const int MOTOR_PIN_1 = 32;
+const int MOTOR_PIN_2 = 32;
+
 const int NULL_PIN = 33;
 // Load cell pins
 const int LOADCELL_DOUT_PIN = 13;
@@ -44,12 +48,15 @@ int test_loop = 0;
 byte segments[MAX_INPUT]; // 每個數位的LED段的狀態
 //int x = 0;
 bool run_mode = 0;//系統工作狀態
-
+bool bucketRun1, bucketRun2 = 0;
 //重量相關
-float setMoisturePercentage = 25;//損失重量百分比
+float setMoisturePercentage = 50;//設定損失重量百分比
 float currentWeight = 0;
 float moisturePercentage = 0;
+
+float totalWeight = 0;
 float goWeight_1, goWeight_2 = 0;
+float calculateMoisturePercentage_1, calculateMoisturePercentage_2 = 0;
 float wetWeight = 0;
 float dryWeight = 0;
 HX711 scale;
@@ -57,15 +64,18 @@ HX711 scale;
 
 // PID constants
 const double Kp = 20, Ki = 4, Kd = 8;
-double setPoint = 75, input, output;
-PID myPID(&input, &output, &setPoint, Kp, Ki, Kd, DIRECT);
+double setPoint_1 = 75, input_1, output_1;
+double setPoint_2 = 75, input_2, output_2;
+PID myPID1(&input_1, &output_1, &setPoint_1, Kp, Ki, Kd, DIRECT);
+PID myPID2(&input_2, &output_2, &setPoint_2, Kp, Ki, Kd, DIRECT);
 int WindowSize = 250;
 unsigned long windowStartTime;
 
 //溫濕度
-float temperature, humidity ;
-Adafruit_SHT31 sht31 = Adafruit_SHT31();
-
+float temperature_1, humidity_1 ;
+float temperature_2, humidity_2 ;
+Adafruit_SHT31 sht31_44 = Adafruit_SHT31();
+Adafruit_SHT31 sht31_45 = Adafruit_SHT31();
 
 //GPIO interrupt
 struct Button {
@@ -103,35 +113,41 @@ const int MAX_TEMP_FOR_FAN = 30;
 const int MIN_MOISTURE_FOR_HEATER = 20;
 
 
-float calculateMoisture(float currentWeight) {
-  //float dryWeight = currentWeight / 100 * dryWeightPer100g;
-  //float wetWeight = currentWeight / 100 * wetWeightPer100g;
-  float moisturePercentage = 0;
-  //goWeight_1
-  moisturePercentage = 100 - ((goWeight_1 - currentWeight) / goWeight_1 * 100);
-
-  Serial.print("goWeight_1");
-  Serial.println(goWeight_1);
-  Serial.print("currentWeight:");
-  Serial.println(currentWeight);
-  Serial.print("moisturePercentage:");
+//
+//nowWeight 現在重量
+//targetWeight原始重量
+float calculateMoisture(float nowWeight, float targetWeight) {
+  if (targetWeight == 0) {
+    Serial.println("Error: targetWeight cannot be zero");
+    return -1; // 回傳一個錯誤值
+  }
+  float moisturePercentage = ((targetWeight - nowWeight) / targetWeight * 100);
+  if (moisturePercentage < 0) {
+    moisturePercentage = 0; // 如果計算出的濕度百分比為負，則設置為 0
+    Serial.println("Error..");
+  }
+  Serial.println("$$$$");
+  Serial.print("**** nowWeight:");
+  Serial.println(nowWeight);
+  Serial.print("**** targetWeight");
+  Serial.println(targetWeight);
+  Serial.print("**** moisturePercentage:");
   Serial.println(moisturePercentage);
-
+  Serial.println("****");
   return moisturePercentage;
 }
+
 void init_gpio() {
   Serial.println("init GPIO...");
   //控制相關
-  pinMode(HEATER_PIN, OUTPUT);
+  pinMode(HEATER_PIN_1, OUTPUT);
+  pinMode(HEATER_PIN_2, OUTPUT);
   pinMode(FAN_PIN, OUTPUT);
-  pinMode(MOTOR_PIN, OUTPUT);
+  pinMode(MOTOR_PIN_1, OUTPUT);
   pinMode(NULL_PIN, OUTPUT);
   digitalWrite(NULL_PIN, LOW);
-
   //保護開關,未啟用
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
-
-
   Serial.println("GPIO ready...");
 }
 
@@ -149,15 +165,19 @@ void init_interruptGPIO() {
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
   while (enable) {
-    digitalWrite(MOTOR_PIN, HIGH);
+    digitalWrite(MOTOR_PIN_1, HIGH);
+    digitalWrite(MOTOR_PIN_2, HIGH);
     delay(1000);
     digitalWrite(FAN_PIN, HIGH);
     delay(1000);
-    digitalWrite(HEATER_PIN, HIGH);
+    digitalWrite(HEATER_PIN_1, HIGH);
+    digitalWrite(HEATER_PIN_2, HIGH);
     delay(1000);
-    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(HEATER_PIN_1, LOW);
+    digitalWrite(HEATER_PIN_2, LOW);
     digitalWrite(FAN_PIN, LOW);
-    digitalWrite(MOTOR_PIN, LOW);
+    digitalWrite(MOTOR_PIN_1, LOW);
+    digitalWrite(MOTOR_PIN_2, LOW);
     Serial.println("test okay...");
     //while (1) {}
   }
@@ -171,15 +191,19 @@ void init_scale() {
 }
 void init_sht31() {
   Serial.println("init sht31...");
-  sht31.begin(0x44);
+  sht31_44.begin(0x44);
+  sht31_45.begin(0x45);
   Serial.println("sht31 ready...");
 }
 
 void init_pid() {
   Serial.println("init pid...");
-  myPID.SetOutputLimits(0, WindowSize);
-  myPID.SetSampleTime(100);
-  myPID.SetMode(AUTOMATIC);
+  myPID1.SetOutputLimits(0, WindowSize);
+  myPID1.SetSampleTime(100);
+  myPID1.SetMode(AUTOMATIC);
+  myPID2.SetOutputLimits(0, WindowSize);
+  myPID2.SetSampleTime(100);
+  myPID2.SetMode(AUTOMATIC);
   Serial.println("pid ready...");
 }
 
@@ -188,110 +212,172 @@ void controlDevice(int pin, bool state) {
   digitalWrite(pin, state ? HIGH : LOW);
 }
 
-void controlHeater(bool state) {
-  controlDevice(HEATER_PIN, state);
-  if (state) Serial.println("HEATING");
+void controlHeater1(bool state) {
+  controlDevice(HEATER_PIN_1, state);
+  if (state) Serial.println("HEATING 1");
 }
+void controlHeater2(bool state) {
+  controlDevice(HEATER_PIN_2, state);
+  if (state) Serial.println("HEATING 2 ");
+}
+
 
 void controlFan(bool state) {
   controlDevice(FAN_PIN, state);
   if (state) Serial.println("FAN WORKING");
 }
 
-void controlMotor(bool state) {
-  controlDevice(MOTOR_PIN, state);
-  if (state) Serial.println("MOTOR RUNNING");
-  else Serial.println("MOTOR STOPPED");
+void controlMotor1(bool state) {
+  controlDevice(MOTOR_PIN_1, state);
+  if (state) Serial.println("MOTOR RUNNING1");
+  else Serial.println("MOTOR STOPPED1");
 }
 
 
+void controlMotor2(bool state) {
+  controlDevice(MOTOR_PIN_2, state);
+  if (state) Serial.println("MOTOR RUNNING2");
+  else Serial.println("MOTOR STOPPED2");
+}
+
+void resetButton() {
+  Serial.println("reset button state");
+  buttonPlus.pressed = false;
+  buttonMinus.pressed = false;
+  buttonEnter.pressed = false;
+  buttonPlus.numberKeyPresses = 0;
+  buttonMinus.numberKeyPresses = 0;
+  buttonEnter.numberKeyPresses = 0;
+}
 void checkButton() {
   if (buttonPlus.pressed) {
     Serial.printf("buttonPlus has been pressed %u times\n", buttonPlus.numberKeyPresses);
     if (buttonPlus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
-      if (setPoint <= 250) {
-        setPoint += 5;
-      }
-      Serial.println("++++++++");
+      bucketRun1 = !bucketRun1;
+      Serial.println("buttonPlus++++++++");
     }
-
+    if (bucketRun1) {
+      goWeight_1 = getWeight();
+      myPID1.SetMode(AUTOMATIC);
+    }
     buttonPlus.numberKeyPresses = 0;
     buttonPlus.pressed = false;
   }
   if (buttonMinus.pressed) {
     Serial.printf("buttonMinus has been pressed %u times\n", buttonMinus.numberKeyPresses);
     if (buttonMinus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
-      if (setPoint >= 5) {
-        setPoint -= 5;
-      }
-      Serial.println("-------");
+      bucketRun2 = !bucketRun2;
+      Serial.println("buttonMinus-------");
     }
-
+    if (bucketRun2) {
+      goWeight_2 = getWeight();
+      myPID2.SetMode(AUTOMATIC);
+    }
     buttonMinus.numberKeyPresses = 0;
     buttonMinus.pressed = false;
   }
   if (buttonEnter.pressed) {
     Serial.printf("buttonEnter has been pressed %u times\n", buttonEnter.numberKeyPresses);
     if (buttonEnter.numberKeyPresses >= BUTTON_PUSH_COUNT) {
-      Serial.println("@@@@@");
+      Serial.println("buttonEnter@@@@@");
       run_mode = !run_mode;
     }
     buttonEnter.numberKeyPresses = 0;
     buttonEnter.pressed = false;
   }
 }
-// pid控制
+// 兩組pid控制
 void runPid() {
-  if (run_mode == true) {
-    //myPID.SetMode(AUTOMATIC);
-    controlMotor(true);
-    Serial.println("PID running...");
+  if(bucketRun1||bucketRun2){
+    controlMotor1(true);
+    }else{
+          controlMotor1(false);
 
-    input = temperature;
-    myPID.Compute();
-    controlHeater(output >= (WindowSize / 2) && moisturePercentage >= MIN_MOISTURE_FOR_HEATER);
-
-    if (temperature > MAX_TEMP_FOR_FAN) {
-      controlFan(true);
-    } else if (temperature < MIN_TEMP_FOR_FAN) {
+      }
+  if (bucketRun1 == true) {
+    //controlMotor1(true);
+    Serial.println("1 PID running...");
+    input_1 = temperature_1;
+    myPID1.Compute();
+    controlHeater1(output_1 >= (WindowSize / 2) );
+    if (calculateMoisturePercentage_1 > setMoisturePercentage) {
+      bucketRun1 = false;
+      controlHeater1(false);
       controlFan(false);
-    }
-
-    if (moisturePercentage < setMoisturePercentage) {
-      run_mode = false;
-      controlHeater(false);
-      controlFan(false);
-      controlMotor(false);
-      Serial.println("Drying completed...");
-      //delay(1000);
+      //controlMotor1(false);
+      Serial.println("Drying 1 completed...");
     } else {
-      Serial.println("Drying...");
+      Serial.println("1 Drying...");
     }
   } else {
-    controlHeater(false);
+    controlHeater1(false);
     controlFan(false);
-    controlMotor(false);
+    //controlMotor1(false);
+  }
+  if (bucketRun2 == true) {
+    //controlMotor2(true);
+    Serial.println("2 PID running...");
+    input_2 = temperature_2;
+    myPID2.Compute();
+    controlHeater2(output_2 >= (WindowSize / 2) );
+    if (calculateMoisturePercentage_2 > setMoisturePercentage) {
+      bucketRun2 = false;
+      controlHeater2(false);
+      controlFan(false);
+      //controlMotor2(false);
+      Serial.println("Drying 2 completed...");
+    } else {
+      Serial.println("2 Drying...");
+    }
+  } else {
+    controlHeater2(false);
+    controlFan(false);
+    //controlMotor2(false);
   }
 }
+
 void print_info(int debugLevel) {
   if (debugLevel) {
     Serial.print("==========");
     Serial.print(String(millis() / 1000));
     Serial.println("==========");
     Serial.print("Running: ");
-    Serial.println(run_mode);
-    Serial.print("Temperature: ");
-    Serial.println(temperature);
-    Serial.print("Humidity: ");
-    Serial.println(humidity);
+    Serial.print(run_mode);
+    Serial.print("\t bucketRun: ");
+    Serial.print(bucketRun1);
+    Serial.print("\t");
+    Serial.println(bucketRun2);
+    Serial.print("Temperature1: ");
+    Serial.print(temperature_1);
+    Serial.print("\t Humidity1: ");
+    Serial.println(humidity_1);
+    Serial.print("Temperature2: ");
+    Serial.print(temperature_2);
+    Serial.print("\t Humidity2: ");
+    Serial.println(humidity_2);
     Serial.print("Current Weight: ");
-    Serial.println(currentWeight);
-    Serial.print("Moisture Percentage: ");
-    Serial.println(moisturePercentage);
-    Serial.print("PID Output: ");
-    Serial.println(output);
-    Serial.print("PID setPoint: ");
-    Serial.println(setPoint);
+    Serial.print(currentWeight);
+    Serial.print("\t Total Weight: ");
+    Serial.println(totalWeight);
+    Serial.print("goWeight_1: ");
+    Serial.print(goWeight_1);
+    Serial.print("\t goWeight_2: ");
+    Serial.println(goWeight_2);
+    //calculateMoisturePercentage_1
+    //Serial.print("Moisture Percentage: ");
+    //Serial.println(moisturePercentage);
+    Serial.print("calMoisture_1: ");
+    Serial.print(calculateMoisturePercentage_1);
+    Serial.print("\t calMoisture_2: ");
+    Serial.println(calculateMoisturePercentage_2);
+    Serial.print("PID Output1: ");
+    Serial.print(output_1);
+    Serial.print("\t PID setPoint1: ");
+    Serial.println(setPoint_1);
+    Serial.print("PID Output2: ");
+    Serial.print(output_2);
+    Serial.print("\t PID setPoint2: ");
+    Serial.println(setPoint_2);
     Serial.print("windowStartTime: ");
     Serial.println(windowStartTime);
   }
@@ -299,30 +385,57 @@ void print_info(int debugLevel) {
 
 int getTempHumi() {
   // 讀取溫度和濕度
-  temperature = sht31.readTemperature();
-  humidity = sht31.readHumidity();
+  temperature_1 = sht31_44.readTemperature();
+  humidity_1 = sht31_44.readHumidity();
+  temperature_2 = sht31_45.readTemperature();
+  humidity_2 = sht31_45.readHumidity();
   return 0;
 }
 
-int getWeight() {
+float getWeight() {
   // Read the current weight
   currentWeight = scale.get_units(10);
-  moisturePercentage = calculateMoisture(currentWeight);
-  return 0;
+  //moisturePercentage = calculateMoisture(currentWeight);
+  return currentWeight;
 }
 
 void checkProtectionSwitch() {
   if (digitalRead(PROTECTION_SWITCH_PIN) == HIGH) {
-    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(HEATER_PIN_1, LOW);    
+    digitalWrite(HEATER_PIN_2, LOW);
     digitalWrite(FAN_PIN, LOW);
-    digitalWrite(MOTOR_PIN, LOW);
-    displayError();
+    digitalWrite(MOTOR_PIN_1, LOW);
+    digitalWrite(MOTOR_PIN_2, LOW);
     Serial.println("Err");
     delay(500);
   }
 }
 
-int count=0;
+int count = 0;
+void oneBucket() {
+  show_7seg(int(count++ * 1), 1, CS_PIN1);
+  if (run_mode == 1) {
+    show_7seg(int(moisturePercentage * 10), 2, CS_PIN2);
+  } else {
+    show_7seg(int(setPoint_1 * 1), 0, CS_PIN2);
+  }
+}
+
+void twoBucket() {
+  if (bucketRun1) {
+    calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);
+    show_7seg(int(calculateMoisturePercentage_1 * 10), 2, CS_PIN1);
+  } else {
+    show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量重量
+  }
+  if (bucketRun2) {
+    calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
+    show_7seg(int(calculateMoisturePercentage_2 * 10), 2, CS_PIN2);
+  } else {
+    show_7seg(int(currentWeight * 1), 1, CS_PIN2);//沒觸發顯示重量重量
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   init_gpio();
@@ -332,74 +445,24 @@ void setup() {
   init_sht31();
   init_pid();
   init_7seg();
-  setPoint=75;
-  
+  setPoint_1 = 75;
+  setPoint_2 = 75;
+  resetButton();
+  //calculateMoisture(-3.5,-2.5);
+  //calculateMoisture(-3.5,-4.5);
+  //while(1){}
 }
 
 void loop() {
   checkButton();
-  show_7seg(int(count++ * 1), 1, CS_PIN1);
-  if (run_mode == 1) {
-    show_7seg(int(moisturePercentage * 10), 2, CS_PIN2);
-  } else {
-    //show_7seg(int(setPoint * 1), 0, CS_PIN2);
-  }
-
+  //oneBucket();
+  twoBucket();
   checkProtectionSwitch();
   getTempHumi();
-  getWeight();
-
-  // Calculate the moisture percentage
-  //moisturePercentage = 30; //for test PID runing
-  // Update PID input
-  /*
-    if (run_mode == true) {
-    // Motor control
-    digitalWrite(MOTOR_PIN, HIGH);
-    Serial.println("PID running...");
-    input = temperature;
-    myPID.Compute();
-    // Heater control
-    //沒有重量的時候也不運行
-    //moisturePercentage=30;
-    if (output >= (WindowSize / 2) && moisturePercentage >= 20) {
-      digitalWrite(HEATER_PIN, HIGH);
-      Serial.println("HEATING");
-    } else {
-      digitalWrite(HEATER_PIN, LOW);
-    }
-
-    // Fan control
-    if (temperature > 30) {
-      digitalWrite(FAN_PIN, HIGH);
-      Serial.println("FAN WORKING");
-    } else if (temperature < 28) {
-      digitalWrite(FAN_PIN, LOW);
-    }
-    if (moisturePercentage < setMoisturePercentage) {
-      run_mode = 0;
-      digitalWrite(HEATER_PIN, LOW);
-      digitalWrite(FAN_PIN, LOW);
-      digitalWrite(MOTOR_PIN, LOW);
-      Serial.println("Drying completed...");
-      delay(1000);
-    } else {
-      Serial.println("Drying...");
-
-    }
-    } else {
-    digitalWrite(HEATER_PIN, LOW);
-    digitalWrite(FAN_PIN, LOW);
-    digitalWrite(MOTOR_PIN, LOW);
-    }*/
+  totalWeight = getWeight();
 
   runPid(); //溫度控制運算
   print_info(true); //true 打印資訊
-  // Handle button input
-  //handleButtonInput();
-  //readButtonInterrupt();//按鍵任務
-  //show_7seg(int(temperature*10),0);
-
 
   //test code
   //testPulseEffect();測試脈衝影響
@@ -411,27 +474,23 @@ void testPulseEffect() {
     show_7seg(int(xxx++ * 1), 1, CS_PIN1);
     if (xxx > 250) xxx = 0;
     Serial.println("加熱器 LOW");
-    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(HEATER_PIN_1, LOW);
+    digitalWrite(HEATER_PIN_2, LOW);
     digitalWrite(FAN_PIN, LOW);
-    digitalWrite(MOTOR_PIN, LOW);
+    digitalWrite(MOTOR_PIN_1, LOW);
+    digitalWrite(MOTOR_PIN_2, LOW);
     delay(250);
     Serial.println("加熱器 HIGH");
-    digitalWrite(HEATER_PIN, HIGH);
+    digitalWrite(HEATER_PIN_1, HIGH);
+    digitalWrite(HEATER_PIN_2, HIGH);
     digitalWrite(FAN_PIN, HIGH);
-    digitalWrite(MOTOR_PIN, HIGH);
+    digitalWrite(MOTOR_PIN_1, HIGH);
+    digitalWrite(MOTOR_PIN_2, HIGH);
     delay(250);
   }
 }
 
-// Update the displayError function
-void displayError() {
-}
 
-// Update the displayTemperature function
-void displayTemperature(float temperature) {
-  char buf[5];
-  //snprintf(buf, sizeof(buf), "%03d", (int)temperature);
-}
 
 // Update the displayMoisturePercentage function
 void displayMoisturePercentage(float moisturePercentage) {
@@ -441,16 +500,16 @@ void displayMoisturePercentage(float moisturePercentage) {
 
 void readButtonInterrupt() {
   if (buttonPlus.pressed) {
-    if (setPoint <= 250) {
-      setPoint += 5;
+    if (setPoint_1 <= 250) {
+      setPoint_1 += 5;
     }
     buttonPlus.pressed = false;
     Serial.println("++++++++");
   }
 
   if (buttonMinus.pressed) {
-    if (setPoint >= 5) {
-      setPoint -= 5;
+    if (setPoint_1 >= 5) {
+      setPoint_1 -= 5;
     }
     buttonMinus.pressed = false;
     Serial.println("-------");
@@ -461,7 +520,8 @@ void readButtonInterrupt() {
     Serial.print("==++==goWeight_1");
     Serial.println(goWeight_1);
     run_mode = !run_mode;
-    myPID.SetMode(AUTOMATIC);
+    myPID1.SetMode(AUTOMATIC);
+    myPID2.SetMode(AUTOMATIC);
     buttonEnter.pressed = false;
   }
   if (buttonEnter.pressed) {
@@ -469,11 +529,12 @@ void readButtonInterrupt() {
     Serial.print("==++==goWeight_2");
     Serial.println(goWeight_2);
     run_mode = !run_mode;
-    myPID.SetMode(AUTOMATIC);
+    myPID1.SetMode(AUTOMATIC);
+    myPID2.SetMode(AUTOMATIC);
     buttonEnter.pressed = false;
   }
   Serial.print("Setpoint: ");
-  Serial.println(setPoint);
+  Serial.println(setPoint_1);
 
 }
 
@@ -608,7 +669,7 @@ void init_7seg() {
   setup_7seg(CS_PIN1);
   setup_7seg(CS_PIN2);
   Serial.println("7seg ready...");
-  delay(1000);
+  delay(500);
 }
 
 void setup_7seg(int pin) {
@@ -663,30 +724,8 @@ void divide(unsigned long &num, byte &result, unsigned long divider) {
   num %= divider;
 }
 
-void show_7seg_new(int num, int dp, int cs_num) {
-  if (num < 0) num = 0;
 
-  unsigned long num_temp = num;
-  byte values[8];
-  unsigned long dividers[8] = {10000000, 1000000, 100000, 10000, 1000, 100, 10, 1};
-
-  // 使用迴圈進行除法和取餘數操作
-  for (int i = 0; i < 8; ++i) {
-    divide(num_temp, values[i], dividers[i]);
-  }
-
-  int dp_states[4] = {0};
-  if (dp >= 1 && dp <= 4) {
-    dp_states[dp - 1] = 1;
-  }
-
-  // 使用迴圈呼叫output7seg
-  for (int i = 0; i < 4; ++i) {
-    output7seg(i + 1, values[3 - i], dp_states[i], cs_num);
-  }
-}
-
-  void show_7seg(int num, int dp, int cs_num) {
+void show_7seg(int num, int dp, int cs_num) {
   unsigned long rem;
   if (num < 0)num = 0;
   byte tenmillions = num / 10000000;
@@ -730,4 +769,4 @@ void show_7seg_new(int num, int dp, int cs_num) {
   output7seg(0x03, tens, c, cs_num); // tens
   output7seg(0x04, rem, d, cs_num); // units
 
-  }
+}
