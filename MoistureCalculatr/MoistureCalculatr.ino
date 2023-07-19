@@ -19,10 +19,10 @@ const int LOADCELL_DOUT_PIN = 13;
 const int LOADCELL_SCK_PIN = 14;
 
 // Button pins
-const int BUTTON_PLUS_PIN = 23;
+const int BUTTON_PLUS_PIN = 27;//原先23因為板上硬體設計卡在1.7會導致誤觸
 const int BUTTON_MINUS_PIN = 5;
 const int BUTTON_ENTER_PIN = 19;
-
+const int BUTTON_PUSH_COUNT = 1;
 // LED display pins
 const int DIN_PIN = 17;
 const int CLK_PIN = 18;
@@ -49,7 +49,7 @@ bool run_mode = 0;//系統工作狀態
 float setMoisturePercentage = 25;//損失重量百分比
 float currentWeight = 0;
 float moisturePercentage = 0;
-float goWeight = 0;
+float goWeight_1, goWeight_2 = 0;
 float wetWeight = 0;
 float dryWeight = 0;
 HX711 scale;
@@ -79,21 +79,21 @@ Button buttonMinus = {BUTTON_MINUS_PIN, 0, false};
 Button buttonEnter = {BUTTON_ENTER_PIN, 0, false};
 
 void IRAM_ATTR isrPlus(void* arg) {
-    Button* s = static_cast<Button*>(arg);
-    s->numberKeyPresses += 1;
-    s->pressed = true;
+  Button* s = static_cast<Button*>(arg);
+  s->numberKeyPresses += 1;
+  s->pressed = true;
 }
 
 void IRAM_ATTR isrMinus(void* arg) {
-    Button* s = static_cast<Button*>(arg);
-    s->numberKeyPresses += 1;
-    s->pressed = true;
+  Button* s = static_cast<Button*>(arg);
+  s->numberKeyPresses += 1;
+  s->pressed = true;
 }
 
 void IRAM_ATTR isrEnter(void* arg) {
-    Button* s = static_cast<Button*>(arg);
-    s->numberKeyPresses += 1;
-    s->pressed = true;
+  Button* s = static_cast<Button*>(arg);
+  s->numberKeyPresses += 1;
+  s->pressed = true;
 }
 
 
@@ -107,11 +107,11 @@ float calculateMoisture(float currentWeight) {
   //float dryWeight = currentWeight / 100 * dryWeightPer100g;
   //float wetWeight = currentWeight / 100 * wetWeightPer100g;
   float moisturePercentage = 0;
-  //goWeight
-  moisturePercentage = 100 - ((goWeight - currentWeight) / goWeight * 100);
+  //goWeight_1
+  moisturePercentage = 100 - ((goWeight_1 - currentWeight) / goWeight_1 * 100);
 
-  Serial.print("goWeight");
-  Serial.println(goWeight);
+  Serial.print("goWeight_1");
+  Serial.println(goWeight_1);
   Serial.print("currentWeight:");
   Serial.println(currentWeight);
   Serial.print("moisturePercentage:");
@@ -130,25 +130,22 @@ void init_gpio() {
 
   //保護開關,未啟用
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
-  //按鈕相關
-  //pinMode(BUTTON_PLUS_PIN, INPUT_PULLUP);
-  //pinMode(BUTTON_MINUS_PIN, INPUT_PULLUP);
-  //pinMode(BUTTON_ENTER_PIN, INPUT_PULLUP);
+
 
   Serial.println("GPIO ready...");
 }
 
-
 void init_interruptGPIO() {
   Serial.println("init interruptGPIO...");
-    pinMode(buttonPlus.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonPlus.PIN, isrPlus, &buttonPlus, FALLING);
-    pinMode(buttonMinus.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonMinus.PIN, isrMinus, &buttonMinus, FALLING);
-    pinMode(buttonEnter.PIN, INPUT_PULLUP);
-    attachInterruptArg(buttonEnter.PIN, isrEnter, &buttonEnter, FALLING);
+  pinMode(buttonEnter.PIN, INPUT_PULLUP);
+  attachInterruptArg(buttonEnter.PIN, isrEnter, &buttonEnter, FALLING);
+  pinMode(buttonPlus.PIN, INPUT_PULLUP);
+  attachInterruptArg(buttonPlus.PIN, isrPlus, &buttonPlus, FALLING);
+  pinMode(buttonMinus.PIN, INPUT_PULLUP);
+  attachInterruptArg(buttonMinus.PIN, isrMinus, &buttonMinus, FALLING);
   Serial.println("interruptGPIO ready...");
 }
+
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
   while (enable) {
@@ -211,20 +208,42 @@ void controlMotor(bool state) {
 void checkButton() {
   if (buttonPlus.pressed) {
     Serial.printf("buttonPlus has been pressed %u times\n", buttonPlus.numberKeyPresses);
+    if (buttonPlus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
+      if (setPoint <= 250) {
+        setPoint += 5;
+      }
+      Serial.println("++++++++");
+    }
+
+    buttonPlus.numberKeyPresses = 0;
     buttonPlus.pressed = false;
   }
   if (buttonMinus.pressed) {
     Serial.printf("buttonMinus has been pressed %u times\n", buttonMinus.numberKeyPresses);
+    if (buttonMinus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
+      if (setPoint >= 5) {
+        setPoint -= 5;
+      }
+      Serial.println("-------");
+    }
+
+    buttonMinus.numberKeyPresses = 0;
     buttonMinus.pressed = false;
   }
   if (buttonEnter.pressed) {
     Serial.printf("buttonEnter has been pressed %u times\n", buttonEnter.numberKeyPresses);
+    if (buttonEnter.numberKeyPresses >= BUTTON_PUSH_COUNT) {
+      Serial.println("@@@@@");
+      run_mode = !run_mode;
+    }
+    buttonEnter.numberKeyPresses = 0;
     buttonEnter.pressed = false;
   }
 }
 // pid控制
 void runPid() {
   if (run_mode == true) {
+    //myPID.SetMode(AUTOMATIC);
     controlMotor(true);
     Serial.println("PID running...");
 
@@ -254,22 +273,10 @@ void runPid() {
     controlMotor(false);
   }
 }
-
-
-void setup() {
-  Serial.begin(115200);
-  init_gpio();
-  init_interruptGPIO();
-  test_gpio(test_init);
-  init_scale();
-  init_sht31();
-  init_pid();
-  init_7seg();
-}
 void print_info(int debugLevel) {
   if (debugLevel) {
     Serial.print("==========");
-    Serial.print(String(millis()/1000));
+    Serial.print(String(millis() / 1000));
     Serial.println("==========");
     Serial.print("Running: ");
     Serial.println(run_mode);
@@ -283,6 +290,8 @@ void print_info(int debugLevel) {
     Serial.println(moisturePercentage);
     Serial.print("PID Output: ");
     Serial.println(output);
+    Serial.print("PID setPoint: ");
+    Serial.println(setPoint);
     Serial.print("windowStartTime: ");
     Serial.println(windowStartTime);
   }
@@ -313,8 +322,29 @@ void checkProtectionSwitch() {
   }
 }
 
+int count=0;
+void setup() {
+  Serial.begin(115200);
+  init_gpio();
+  init_interruptGPIO();
+  test_gpio(test_init);
+  init_scale();
+  init_sht31();
+  init_pid();
+  init_7seg();
+  setPoint=75;
+  
+}
+
 void loop() {
   checkButton();
+  show_7seg(int(count++ * 1), 1, CS_PIN1);
+  if (run_mode == 1) {
+    show_7seg(int(moisturePercentage * 10), 2, CS_PIN2);
+  } else {
+    //show_7seg(int(setPoint * 1), 0, CS_PIN2);
+  }
+
   checkProtectionSwitch();
   getTempHumi();
   getWeight();
@@ -367,16 +397,10 @@ void loop() {
   print_info(true); //true 打印資訊
   // Handle button input
   //handleButtonInput();
-  readButtonInterrupt();
+  //readButtonInterrupt();//按鍵任務
   //show_7seg(int(temperature*10),0);
-  show_7seg(int(currentWeight * 1), 1, CS_PIN1);
-  if (run_mode == 1) {
-    show_7seg(int(moisturePercentage * 10), 2, CS_PIN2);
-  } else {
-    show_7seg(int(setPoint * 1), 0, CS_PIN2);
-  }
-  // Delay
-  //delay(100);
+
+
   //test code
   //testPulseEffect();測試脈衝影響
 }
@@ -415,37 +439,47 @@ void displayMoisturePercentage(float moisturePercentage) {
   //snprintf(buf, sizeof(buf), "%03d", (int)moisturePercentage);
 }
 
-void readButtonInterrupt(){
-      if (buttonPlus.pressed) {
-        if (setPoint <= 250) {
-            setPoint += 5;
-        }
-        buttonPlus.pressed = false;
-        Serial.println("++++++++");
-    } 
-
-    if (buttonMinus.pressed) {
-        if (setPoint >= 5) {
-            setPoint -= 5;
-        }
-        buttonMinus.pressed = false;
-        Serial.println("-------");
+void readButtonInterrupt() {
+  if (buttonPlus.pressed) {
+    if (setPoint <= 250) {
+      setPoint += 5;
     }
-
-    if (buttonEnter.pressed) {
-        goWeight = currentWeight;
-        Serial.println("@@@@@@@");
-        run_mode = !run_mode;
-        myPID.SetMode(AUTOMATIC);
-        buttonEnter.pressed = false;
-    }
-
-    Serial.print("Setpoint: ");
-    Serial.println(setPoint);
-  
+    buttonPlus.pressed = false;
+    Serial.println("++++++++");
   }
 
-void handleButtonInput() {
+  if (buttonMinus.pressed) {
+    if (setPoint >= 5) {
+      setPoint -= 5;
+    }
+    buttonMinus.pressed = false;
+    Serial.println("-------");
+  }
+
+  if (buttonEnter.pressed) {
+    goWeight_1 = currentWeight;
+    Serial.print("==++==goWeight_1");
+    Serial.println(goWeight_1);
+    run_mode = !run_mode;
+    myPID.SetMode(AUTOMATIC);
+    buttonEnter.pressed = false;
+  }
+  if (buttonEnter.pressed) {
+    goWeight_2 = currentWeight;
+    Serial.print("==++==goWeight_2");
+    Serial.println(goWeight_2);
+    run_mode = !run_mode;
+    myPID.SetMode(AUTOMATIC);
+    buttonEnter.pressed = false;
+  }
+  Serial.print("Setpoint: ");
+  Serial.println(setPoint);
+
+}
+
+
+/*
+  void handleButtonInput() {
   static unsigned long lastButtonPress = 0;
   unsigned long now = millis();
 
@@ -469,7 +503,7 @@ void handleButtonInput() {
 
   } else if (digitalRead(BUTTON_ENTER_PIN) == LOW) {
     lastButtonPress = now;
-    goWeight = currentWeight;
+    goWeight_1 = currentWeight;
     Serial.println("@@@@@@@");
     run_mode = !run_mode;
     myPID.SetMode(AUTOMATIC);
@@ -477,8 +511,8 @@ void handleButtonInput() {
   Serial.print("Setpoint: ");
   Serial.println(setPoint);
 
-}
-
+  }
+*/
 
 void init_7seg_old()
 {
@@ -574,6 +608,7 @@ void init_7seg() {
   setup_7seg(CS_PIN1);
   setup_7seg(CS_PIN2);
   Serial.println("7seg ready...");
+  delay(1000);
 }
 
 void setup_7seg(int pin) {
@@ -628,7 +663,7 @@ void divide(unsigned long &num, byte &result, unsigned long divider) {
   num %= divider;
 }
 
-void show_7seg(int num, int dp, int cs_num) {
+void show_7seg_new(int num, int dp, int cs_num) {
   if (num < 0) num = 0;
 
   unsigned long num_temp = num;
@@ -650,8 +685,8 @@ void show_7seg(int num, int dp, int cs_num) {
     output7seg(i + 1, values[3 - i], dp_states[i], cs_num);
   }
 }
-/*
-  void show_7seg_old(int num, int dp, int cs_num) {
+
+  void show_7seg(int num, int dp, int cs_num) {
   unsigned long rem;
   if (num < 0)num = 0;
   byte tenmillions = num / 10000000;
@@ -695,4 +730,4 @@ void show_7seg(int num, int dp, int cs_num) {
   output7seg(0x03, tens, c, cs_num); // tens
   output7seg(0x04, rem, d, cs_num); // units
 
-  }*/
+  }
