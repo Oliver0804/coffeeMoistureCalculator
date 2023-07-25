@@ -32,7 +32,8 @@ const int DIN_PIN = 17;
 const int CLK_PIN = 18;
 const int CS_PIN1 = 16;
 const int CS_PIN2 = 15;
-
+const int CS_PIN3 = 2;
+const int CS_PIN4 = 4;
 
 // GPIO pin for protection switch
 const int PROTECTION_SWITCH_PIN = 34;
@@ -51,6 +52,7 @@ bool run_mode = 0;//系統工作狀態
 bool bucketRun1, bucketRun2 = 0;
 //重量相關
 float setMoisturePercentage = 50;//設定損失重量百分比
+float demoMoisturePercentage = 48.6;//廠商測試結果
 float currentWeight = 0;
 float moisturePercentage = 0;
 
@@ -435,19 +437,40 @@ void oneBucket() {
     show_7seg(int(setPoint_1 * 1), 0, CS_PIN2);
   }
 }
+/*
+待機時顯示
+重量
+設定溫度
 
+啟動後顯示
+含水量(100%遞減 目標50%停止)
+當前溫度
+ */
 void twoBucket() {
+  //CS_PIN1,2
   if (bucketRun1) {
+    //啟動 
     calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);
-    show_7seg(int(calculateMoisturePercentage_1 * 10), 2, CS_PIN1);
+    float show_percnetage_1=0;
+    show_percnetage_1=map(calculateMoisturePercentage_1,0,100,0,demoMoisturePercentage);
+    show_7seg(int(show_percnetage_1 * 10), 2, CS_PIN1);
+    show_7seg(int(temperature_1 * 10), 2, CS_PIN1);//顯示溫度
   } else {
-    show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量重量
+    show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量
+    show_7seg(int(setPoint_1 * 1), 1, CS_PIN2);//沒觸發顯示溫度
+
   }
+  //CS_PIN3,4
   if (bucketRun2) {
+    //啟動
     calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
-    show_7seg(int(calculateMoisturePercentage_2 * 10), 2, CS_PIN2);
+    float show_percnetage_2=0;
+    show_percnetage_2=map(calculateMoisturePercentage_2,0,100,0,demoMoisturePercentage);
+    show_7seg(int(show_percnetage_2 * 10), 2, CS_PIN1);
+    show_7seg(int(temperature_2 * 10), 2, CS_PIN1);//顯示溫度
   } else {
-    show_7seg(int(currentWeight * 1), 1, CS_PIN2);//沒觸發顯示重量重量
+    show_7seg(int(currentWeight * 1), 1, CS_PIN3);//沒觸發顯示重量
+    show_7seg(int(setPoint_2 * 1), 1, CS_PIN4);//沒觸發顯示溫度
   }
 }
 
@@ -590,99 +613,26 @@ void readButtonInterrupt() {
   }
 */
 
-void init_7seg_old()
-{
-  Serial.println("init 7seg...");
-  digitalWrite(CS_PIN1, HIGH);
-  digitalWrite(CS_PIN2, HIGH);
-  pinMode(DIN_PIN, OUTPUT);
-  pinMode(CS_PIN1, OUTPUT);
-  pinMode(CS_PIN2, OUTPUT);
-  pinMode(CLK_PIN, OUTPUT);
 
-  // For test mode (all digits on) set to 0x01. Normally we want this off (0x00)
-  output7seg(0x0f, 0x0, 2, CS_PIN1);
-
-  // Set all digits off initially
-  output7seg(0x0c, 0x0, 2, CS_PIN1);
-
-  // Set brightness for the digits to high(er) level than default minimum (Intensity Register Format)
-  output7seg(0x0a, 0x02, 2, CS_PIN1);
-
-  // Set decode mode for ALL digits to output actual ASCII chars rather than just
-  // individual segments of a digit
-  output7seg(0x09, 0xFF, 2, CS_PIN1);
-
-  // Set first digit (right most) to '5'
-  output7seg(0x01, 0x05, 2, CS_PIN1);
-
-  // Set next digits to 8 7 6 (Code B Font)
-  output7seg(0x02, 0x06, 2, CS_PIN1);
-  output7seg(0x03, 0x07, 2, CS_PIN1);
-  output7seg(0x04, 0x08, 2, CS_PIN1);
-
-  // If first four digits not set it will display rubbish data (Code B Font) so use 'blank' from Register Data
-  output7seg(0x05, 0x0F, 2, CS_PIN1);
-  output7seg(0x06, 0x0F, 2, CS_PIN1);
-  output7seg(0x07, 0x0F, 2, CS_PIN1);
-  output7seg(0x08, 0x0F, 2, CS_PIN1);
-
-  // Ensure ALL digits are displayed (Scan Limit Register)
-  output7seg(0x0b, 0x07, 2, CS_PIN1);
-
-  // Turn display ON (boot up = shutdown display)
-  output7seg(0x0c, 0x01, 2, CS_PIN1);
-
-
-  //第二組LCD屏幕初始化
-  // For test mode (all digits on) set to 0x01. Normally we want this off (0x00)
-  output7seg(0x0f, 0x0, 2, CS_PIN2);
-
-  // Set all digits off initially
-  output7seg(0x0c, 0x0, 2, CS_PIN2);
-
-  // Set brightness for the digits to high(er) level than default minimum (Intensity Register Format)
-  output7seg(0x0a, 0x02, 2, CS_PIN2);
-
-  // Set decode mode for ALL digits to output actual ASCII chars rather than just
-  // individual segments of a digit
-  output7seg(0x09, 0xFF, 2, CS_PIN2);
-
-  // Set first digit (right most) to '5'
-  output7seg(0x01, 0x05, 2, CS_PIN2);
-
-  // Set next digits to 8 7 6 (Code B Font)
-  output7seg(0x02, 0x06, 2, CS_PIN2);
-  output7seg(0x03, 0x07, 2, CS_PIN2);
-  output7seg(0x04, 0x08, 2, CS_PIN2);
-
-  // If first four digits not set it will display rubbish data (Code B Font) so use 'blank' from Register Data
-  output7seg(0x05, 0x0F, 2, CS_PIN2);
-  output7seg(0x06, 0x0F, 2, CS_PIN2);
-  output7seg(0x07, 0x0F, 2, CS_PIN2);
-  output7seg(0x08, 0x0F, 2, CS_PIN2);
-
-  // Ensure ALL digits are displayed (Scan Limit Register)
-  output7seg(0x0b, 0x07, 2, CS_PIN2);
-
-  // Turn display ON (boot up = shutdown display)
-  output7seg(0x0c, 0x01, 2, CS_PIN2);
-  Serial.println("init ready...");
-
-}
 
 
 void init_7seg() {
   Serial.println("init 7seg...");
   digitalWrite(CS_PIN1, HIGH);
   digitalWrite(CS_PIN2, HIGH);
+  digitalWrite(CS_PIN3, HIGH);
+  digitalWrite(CS_PIN4, HIGH);
   pinMode(DIN_PIN, OUTPUT);
   pinMode(CS_PIN1, OUTPUT);
   pinMode(CS_PIN2, OUTPUT);
+    pinMode(CS_PIN3, OUTPUT);
+  pinMode(CS_PIN4, OUTPUT);
   pinMode(CLK_PIN, OUTPUT);
   //設置初始化
   setup_7seg(CS_PIN1);
   setup_7seg(CS_PIN2);
+  setup_7seg(CS_PIN3);
+  setup_7seg(CS_PIN4);
   Serial.println("7seg ready...");
   delay(500);
 }
@@ -692,14 +642,10 @@ void setup_7seg(int pin) {
   output7seg(0x0c, 0x0, 2, pin);
   output7seg(0x0a, 0x02, 2, pin);
   output7seg(0x09, 0xFF, 2, pin);
-  output7seg(0x01, 0x05, 2, pin);
-  output7seg(0x02, 0x06, 2, pin);
-  output7seg(0x03, 0x07, 2, pin);
-  output7seg(0x04, 0x08, 2, pin);
-  output7seg(0x05, 0x0F, 2, pin);
-  output7seg(0x06, 0x0F, 2, pin);
-  output7seg(0x07, 0x0F, 2, pin);
-  output7seg(0x08, 0x0F, 2, pin);
+  output7seg(0x01, 0x00, 2, pin);
+  output7seg(0x02, 0x00, 2, pin);
+  output7seg(0x03, 0x00, 2, pin);
+  output7seg(0x04, 0x01, 2, pin);
   output7seg(0x0b, 0x07, 2, pin);
   output7seg(0x0c, 0x01, 2, pin);
 }
