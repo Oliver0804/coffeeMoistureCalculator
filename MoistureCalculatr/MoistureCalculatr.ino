@@ -11,8 +11,8 @@
 //引腳定應 start
 // Relay pins
 const int HEATER_PIN_1 = 26;
-const int FAN_PIN = -1;
-const int HEATER_PIN_2 = 25;
+const int FAN_PIN = 25; 
+const int HEATER_PIN_2 = 33; //two 25
 
 const int MOTOR_PIN_1 = 32;
 const int MOTOR_PIN_2 = 32;
@@ -26,7 +26,7 @@ const int LOADCELL_SCK_PIN = 14;
 const int BUTTON_PLUS_PIN = 27;//原先23因為板上硬體設計卡在1.7會導致誤觸
 const int BUTTON_MINUS_PIN = 5;
 const int BUTTON_ENTER_PIN = 19;
-const int BUTTON_PUSH_COUNT = 1;
+const int BUTTON_PUSH_COUNT = 4;
 // LED display pins
 const int DIN_PIN = 17;
 const int CLK_PIN = 18;
@@ -51,8 +51,10 @@ byte segments[MAX_INPUT]; // 每個數位的LED段的狀態
 bool run_mode = 0;//系統工作狀態
 bool bucketRun1, bucketRun2 = 0;
 //重量相關
-float setMoisturePercentage = 50;//設定損失重量百分比
+float setMoisturePercentage = 10;//設定損失重量百分比
 float demoMoisturePercentage = 48.6;//廠商測試結果
+
+float show_percnetage_1,show_percnetage_2=0;
 float currentWeight = 0;
 float moisturePercentage = 0;
 
@@ -67,7 +69,7 @@ HX711 scale;
 // PID constants
 const double Kp = 20, Ki = 4, Kd = 8;
 double setPoint_1 = 75, input_1, output_1;
-double setPoint_2 = 75, input_2, output_2;
+double setPoint_2 = 76, input_2, output_2;
 PID myPID1(&input_1, &output_1, &setPoint_1, Kp, Ki, Kd, DIRECT);
 PID myPID2(&input_2, &output_2, &setPoint_2, Kp, Ki, Kd, DIRECT);
 int WindowSize = 250;
@@ -166,6 +168,13 @@ void init_interruptGPIO() {
 
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
+  while(0){
+    controlFan(1);
+    delay(1000);
+    controlFan(0);
+    delay(1000);
+        
+    }
   while (enable) {
     Serial.println("test motor...");
     digitalWrite(MOTOR_PIN_1, HIGH);
@@ -313,11 +322,12 @@ void runPid() {
       }
   if (bucketRun1 == true) {
     //controlMotor1(true);
+    controlFan(true);
     Serial.println("1 PID running...");
     input_1 = temperature_1;
     myPID1.Compute();
     controlHeater1(output_1 >= (WindowSize / 2) );
-    if (calculateMoisturePercentage_1 > setMoisturePercentage) {
+    if (show_percnetage_1 > setMoisturePercentage) {
       bucketRun1 = false;
       controlHeater1(false);
       controlFan(false);
@@ -328,7 +338,7 @@ void runPid() {
     }
   } else {
     controlHeater1(false);
-    controlFan(false);
+    //controlFan(false);
     //controlMotor1(false);
   }
   if (bucketRun2 == true) {
@@ -337,10 +347,10 @@ void runPid() {
     input_2 = temperature_2;
     myPID2.Compute();
     controlHeater2(output_2 >= (WindowSize / 2) );
-    if (calculateMoisturePercentage_2 > setMoisturePercentage) {
+    if (show_percnetage_2 > setMoisturePercentage) {
       bucketRun2 = false;
       controlHeater2(false);
-      controlFan(false);
+      //controlFan(false);
       //controlMotor2(false);
       Serial.println("Drying 2 completed...");
     } else {
@@ -348,13 +358,13 @@ void runPid() {
     }
   } else {
     controlHeater2(false);
-    controlFan(false);
+    //controlFan(false);
     //controlMotor2(false);
   }
 }
 
 void print_info(int debugLevel) {
-  if (debugLevel) {
+  if (debugLevel) {//
     Serial.print("==========");
     Serial.print(String(millis() / 1000));
     Serial.println("==========");
@@ -364,6 +374,10 @@ void print_info(int debugLevel) {
     Serial.print(bucketRun1);
     Serial.print("\t");
     Serial.println(bucketRun2);
+    Serial.print("show_percne_1: ");
+    Serial.print(show_percnetage_1);
+    Serial.print("\t show_percne_2: ");
+    Serial.println(show_percnetage_2);
     Serial.print("Temperature1: ");
     Serial.print(temperature_1);
     Serial.print("\t Humidity1: ");
@@ -448,26 +462,30 @@ void oneBucket() {
  */
 void twoBucket() {
   //CS_PIN1,2
+  //bucketRun1=1;//for test
   if (bucketRun1) {
     //啟動 
     calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);
-    float show_percnetage_1=0;
+    //calculateMoisturePercentage_1 = calculateMoisture(80, 100);//for test
     show_percnetage_1=map(calculateMoisturePercentage_1,0,100,0,demoMoisturePercentage);
-    show_7seg(int(show_percnetage_1 * 10), 2, CS_PIN1);
-    show_7seg(int(temperature_1 * 10), 2, CS_PIN1);//顯示溫度
+    Serial.println(demoMoisturePercentage-show_percnetage_1);
+    show_7seg(int((demoMoisturePercentage-show_percnetage_1) * 10), 2, CS_PIN1);
+    show_7seg(int(temperature_1 * 10), 2, CS_PIN2);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量
     show_7seg(int(setPoint_1 * 1), 1, CS_PIN2);//沒觸發顯示溫度
 
   }
   //CS_PIN3,4
+  //bucketRun2=1;//for test
   if (bucketRun2) {
     //啟動
     calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
-    float show_percnetage_2=0;
+    //calculateMoisturePercentage_2 = calculateMoisture(90, 100);//for test
     show_percnetage_2=map(calculateMoisturePercentage_2,0,100,0,demoMoisturePercentage);
-    show_7seg(int(show_percnetage_2 * 10), 2, CS_PIN1);
-    show_7seg(int(temperature_2 * 10), 2, CS_PIN1);//顯示溫度
+    Serial.println(demoMoisturePercentage-show_percnetage_2);
+    show_7seg(int(demoMoisturePercentage-show_percnetage_2), 2, CS_PIN3);
+    show_7seg(int(temperature_2 * 10), 2, CS_PIN4);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN3);//沒觸發顯示重量
     show_7seg(int(setPoint_2 * 1), 1, CS_PIN4);//沒觸發顯示溫度
