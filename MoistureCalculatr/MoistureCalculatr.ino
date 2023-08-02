@@ -3,7 +3,7 @@
 #include <HX711.h>
 #include <PID_v1_bc.h>
 #include <Arduino.h>
-
+#
 /* SHT3xt
   SDA 21
   SCL 22
@@ -11,7 +11,7 @@
 //引腳定應 start
 // Relay pins
 const int HEATER_PIN_1 = 26;
-const int FAN_PIN = 25; 
+const int FAN_PIN = 25; // 無風扇需控制則使用-1
 const int HEATER_PIN_2 = 33; //two 25
 
 const int MOTOR_PIN_1 = 32;
@@ -26,7 +26,7 @@ const int LOADCELL_SCK_PIN = 14;
 const int BUTTON_PLUS_PIN = 27;//原先23因為板上硬體設計卡在1.7會導致誤觸
 const int BUTTON_MINUS_PIN = 5;
 const int BUTTON_ENTER_PIN = 19;
-const int BUTTON_PUSH_COUNT = 4;
+const int BUTTON_PUSH_COUNT = 4; //防電子彈跳
 // LED display pins
 const int DIN_PIN = 17;
 const int CLK_PIN = 18;
@@ -53,11 +53,10 @@ bool bucketRun1, bucketRun2 = 0;
 //重量相關
 float setMoisturePercentage = 10;//設定損失重量百分比
 float demoMoisturePercentage = 48.6;//廠商測試結果
-
-float show_percnetage_1,show_percnetage_2=0;
+//重量計算用
+float show_percnetage_1, show_percnetage_2 = 0;
 float currentWeight = 0;
 float moisturePercentage = 0;
-
 float totalWeight = 0;
 float goWeight_1, goWeight_2 = 0;
 float calculateMoisturePercentage_1, calculateMoisturePercentage_2 = 0;
@@ -65,11 +64,10 @@ float wetWeight = 0;
 float dryWeight = 0;
 HX711 scale;
 
-
 // PID constants
-const double Kp = 20, Ki = 4, Kd = 8;
+const double Kp = 15, Ki = 4, Kd = 8;
 double setPoint_1 = 75, input_1, output_1;
-double setPoint_2 = 76, input_2, output_2;
+double setPoint_2 = 75, input_2, output_2;
 PID myPID1(&input_1, &output_1, &setPoint_1, Kp, Ki, Kd, DIRECT);
 PID myPID2(&input_2, &output_2, &setPoint_2, Kp, Ki, Kd, DIRECT);
 int WindowSize = 250;
@@ -110,17 +108,34 @@ void IRAM_ATTR isrEnter(void* arg) {
   s->pressed = true;
 }
 
-
 // 設置一些全域參數
 const int MIN_TEMP_FOR_FAN = 28;
 const int MAX_TEMP_FOR_FAN = 30;
 const int MIN_MOISTURE_FOR_HEATER = 20;
 
-
-//
 //nowWeight 現在重量
 //targetWeight原始重量
-float calculateMoisture(float nowWeight, float targetWeight) {
+float calculateMoisture(float nowWeight, float initialWeight) {
+  // 檢查參數是否合法
+  if (nowWeight <= 0 || initialWeight <= 0 || nowWeight > initialWeight) {
+    Serial.println("Err.");
+    return -1;
+  }
+
+  // 計算出初始B成分的重量
+  float initialB = initialWeight * 0.514; // 51.4 是 B 成分的初始百分比
+
+  // 從當前重量中減去B成分的重量，得到A成分的現有重量
+  float nowA = nowWeight - initialB;
+
+  // 根據A成分的初始重量和現有重量，計算出A成分損失的百分比
+  float lossPercent = (1 - (nowA / (initialWeight * 0.486))) * 100; // 48.6 是 A 成分的初始百分比
+  Serial.print("lossPercent: ");
+  Serial.println(lossPercent);
+  return lossPercent;
+}
+/*
+  float calculateMoisture(float nowWeight, float targetWeight) {
   if (targetWeight == 0) {
     Serial.println("Error: targetWeight cannot be zero");
     return -1; // 回傳一個錯誤值
@@ -139,7 +154,7 @@ float calculateMoisture(float nowWeight, float targetWeight) {
   Serial.println(moisturePercentage);
   Serial.println("****");
   return moisturePercentage;
-}
+  }*/
 
 void init_gpio() {
   Serial.println("init GPIO...");
@@ -168,13 +183,13 @@ void init_interruptGPIO() {
 
 void test_gpio(int enable) {
   Serial.println("test GPIO...");
-  while(0){
+  while (0) {
     controlFan(1);
     delay(1000);
     controlFan(0);
     delay(1000);
-        
-    }
+
+  }
   while (enable) {
     Serial.println("test motor...");
     digitalWrite(MOTOR_PIN_1, HIGH);
@@ -249,8 +264,13 @@ void controlHeater2(bool state) {
 
 
 void controlFan(bool state) {
-  controlDevice(FAN_PIN, state);
-  if (state) Serial.println("FAN WORKING");
+  if (FAN_PIN != -1) {
+    controlDevice(FAN_PIN, state);
+    if (state) Serial.println("FAN WORKING");
+    else Serial.println("FAN STOPPED");
+  } else {
+    Serial.println("DON'T HAVE FAN");
+  }
 }
 
 void controlMotor1(bool state) {
@@ -261,9 +281,13 @@ void controlMotor1(bool state) {
 
 
 void controlMotor2(bool state) {
-  controlDevice(MOTOR_PIN_2, state);
-  if (state) Serial.println("MOTOR RUNNING2");
-  else Serial.println("MOTOR STOPPED2");
+  if (MOTOR_PIN_1 == MOTOR_PIN_2) {
+    Serial.println("MOTOR ONLY 1 MOTOR");
+  } else {
+    controlDevice(MOTOR_PIN_2, state);
+    if (state) Serial.println("MOTOR RUNNING2");
+    else Serial.println("MOTOR STOPPED2");
+  }
 }
 
 void resetButton() {
@@ -314,12 +338,11 @@ void checkButton() {
 }
 // 兩組pid控制
 void runPid() {
-  if(bucketRun1||bucketRun2){
+  if (bucketRun1 || bucketRun2) {
     controlMotor1(true);
-    }else{
-          controlMotor1(false);
-
-      }
+  } else {
+    controlMotor1(false);
+  }
   if (bucketRun1 == true) {
     //controlMotor1(true);
     controlFan(true);
@@ -327,7 +350,7 @@ void runPid() {
     input_1 = temperature_1;
     myPID1.Compute();
     controlHeater1(output_1 >= (WindowSize / 2) );
-    if (show_percnetage_1 > setMoisturePercentage) {
+    if (show_percnetage_1 < setMoisturePercentage) {//setMoisturePercentage=10
       bucketRun1 = false;
       controlHeater1(false);
       controlFan(false);
@@ -347,7 +370,7 @@ void runPid() {
     input_2 = temperature_2;
     myPID2.Compute();
     controlHeater2(output_2 >= (WindowSize / 2) );
-    if (show_percnetage_2 > setMoisturePercentage) {
+    if (show_percnetage_2 < setMoisturePercentage) {//setMoisturePercentage=10
       bucketRun2 = false;
       controlHeater2(false);
       //controlFan(false);
@@ -432,7 +455,7 @@ float getWeight() {
 
 void checkProtectionSwitch() {
   if (digitalRead(PROTECTION_SWITCH_PIN) == HIGH) {
-    digitalWrite(HEATER_PIN_1, LOW);    
+    digitalWrite(HEATER_PIN_1, LOW);
     digitalWrite(HEATER_PIN_2, LOW);
     digitalWrite(FAN_PIN, LOW);
     digitalWrite(MOTOR_PIN_1, LOW);
@@ -452,24 +475,24 @@ void oneBucket() {
   }
 }
 /*
-待機時顯示
-重量
-設定溫度
+  待機時顯示
+  重量
+  設定溫度
 
-啟動後顯示
-含水量(100%遞減 目標50%停止)
-當前溫度
- */
+  啟動後顯示
+  含水量(48.6%遞減 目標10%停止)
+  當前溫度
+*/
 void twoBucket() {
   //CS_PIN1,2
-  //bucketRun1=1;//for test
+  //bucketRun1 = 1; //for test
   if (bucketRun1) {
-    //啟動 
-    calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);
-    //calculateMoisturePercentage_1 = calculateMoisture(80, 100);//for test
-    show_percnetage_1=map(calculateMoisturePercentage_1,0,100,0,demoMoisturePercentage);
-    Serial.println(demoMoisturePercentage-show_percnetage_1);
-    show_7seg(int((demoMoisturePercentage-show_percnetage_1) * 10), 2, CS_PIN1);
+    //啟動
+    calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);// 計算損失水分百分比
+    //calculateMoisturePercentage_1 = calculateMoisture(50, 100);//for test
+    show_percnetage_1 = demoMoisturePercentage - (map(calculateMoisturePercentage_1, 0, 100, 0, demoMoisturePercentage));
+    Serial.println(show_percnetage_1);
+    show_7seg(int(show_percnetage_1 * 10), 2, CS_PIN1);
     show_7seg(int(temperature_1 * 10), 2, CS_PIN2);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量
@@ -482,9 +505,9 @@ void twoBucket() {
     //啟動
     calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
     //calculateMoisturePercentage_2 = calculateMoisture(90, 100);//for test
-    show_percnetage_2=map(calculateMoisturePercentage_2,0,100,0,demoMoisturePercentage);
-    Serial.println(demoMoisturePercentage-show_percnetage_2);
-    show_7seg(int(demoMoisturePercentage-show_percnetage_2), 2, CS_PIN3);
+    show_percnetage_2 = demoMoisturePercentage - (map(calculateMoisturePercentage_2, 0, 100, 0, demoMoisturePercentage));
+    Serial.println(show_percnetage_2);
+    show_7seg(int(show_percnetage_2), 2, CS_PIN3);
     show_7seg(int(temperature_2 * 10), 2, CS_PIN4);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN3);//沒觸發顯示重量
@@ -529,14 +552,14 @@ void testPulseEffect() {
   while (true) { // 確保此迴圈能一直執行，原本 while(0) 會導致程式碼塊不被執行
     show_7seg(int(xxx++ * 1), 1, CS_PIN1);
     if (xxx > 250) xxx = 0;
-    Serial.println("加熱器 LOW");
+    Serial.println("Heater LOW");
     digitalWrite(HEATER_PIN_1, LOW);
     digitalWrite(HEATER_PIN_2, LOW);
     digitalWrite(FAN_PIN, LOW);
     digitalWrite(MOTOR_PIN_1, LOW);
     digitalWrite(MOTOR_PIN_2, LOW);
     delay(250);
-    Serial.println("加熱器 HIGH");
+    Serial.println("Heater HIGH");
     digitalWrite(HEATER_PIN_1, HIGH);
     digitalWrite(HEATER_PIN_2, HIGH);
     digitalWrite(FAN_PIN, HIGH);
@@ -554,83 +577,6 @@ void displayMoisturePercentage(float moisturePercentage) {
   //snprintf(buf, sizeof(buf), "%03d", (int)moisturePercentage);
 }
 
-void readButtonInterrupt() {
-  if (buttonPlus.pressed) {
-    if (setPoint_1 <= 250) {
-      setPoint_1 += 5;
-    }
-    buttonPlus.pressed = false;
-    Serial.println("++++++++");
-  }
-
-  if (buttonMinus.pressed) {
-    if (setPoint_1 >= 5) {
-      setPoint_1 -= 5;
-    }
-    buttonMinus.pressed = false;
-    Serial.println("-------");
-  }
-
-  if (buttonEnter.pressed) {
-    goWeight_1 = currentWeight;
-    Serial.print("==++==goWeight_1");
-    Serial.println(goWeight_1);
-    run_mode = !run_mode;
-    myPID1.SetMode(AUTOMATIC);
-    myPID2.SetMode(AUTOMATIC);
-    buttonEnter.pressed = false;
-  }
-  if (buttonEnter.pressed) {
-    goWeight_2 = currentWeight;
-    Serial.print("==++==goWeight_2");
-    Serial.println(goWeight_2);
-    run_mode = !run_mode;
-    myPID1.SetMode(AUTOMATIC);
-    myPID2.SetMode(AUTOMATIC);
-    buttonEnter.pressed = false;
-  }
-  Serial.print("Setpoint: ");
-  Serial.println(setPoint_1);
-
-}
-
-
-/*
-  void handleButtonInput() {
-  static unsigned long lastButtonPress = 0;
-  unsigned long now = millis();
-
-  if (now - lastButtonPress < 500) {
-    return;
-  }
-
-  if (digitalRead(BUTTON_PLUS_PIN) == LOW) {
-    if (setPoint <= 250) {
-      setPoint += 5;
-    }
-    lastButtonPress = now;
-    Serial.println("++++++++");
-
-  } else if (digitalRead(BUTTON_MINUS_PIN) == LOW) {
-    if (setPoint >= 5) {
-      setPoint -= 5;
-    }
-    lastButtonPress = now;
-    Serial.println("-------");
-
-  } else if (digitalRead(BUTTON_ENTER_PIN) == LOW) {
-    lastButtonPress = now;
-    goWeight_1 = currentWeight;
-    Serial.println("@@@@@@@");
-    run_mode = !run_mode;
-    myPID.SetMode(AUTOMATIC);
-  }
-  Serial.print("Setpoint: ");
-  Serial.println(setPoint);
-
-  }
-*/
-
 
 
 
@@ -643,7 +589,7 @@ void init_7seg() {
   pinMode(DIN_PIN, OUTPUT);
   pinMode(CS_PIN1, OUTPUT);
   pinMode(CS_PIN2, OUTPUT);
-    pinMode(CS_PIN3, OUTPUT);
+  pinMode(CS_PIN3, OUTPUT);
   pinMode(CS_PIN4, OUTPUT);
   pinMode(CLK_PIN, OUTPUT);
   //設置初始化
