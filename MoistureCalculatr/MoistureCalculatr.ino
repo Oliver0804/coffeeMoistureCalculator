@@ -215,6 +215,7 @@ void init_ota(){
   /* 初始化 ESP2SOTA 函式庫 */
   ESP2SOTA.begin(&server);
   server.begin();
+  Serial.println("http://esp32.local/update");
   }
 void init_interruptGPIO() {
   Serial.println("init interruptGPIO...");
