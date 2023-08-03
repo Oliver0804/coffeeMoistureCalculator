@@ -3,6 +3,17 @@
 #include <HX711.h>
 #include <PID_v1_bc.h>
 #include <Arduino.h>
+
+#include <WiFi.h>
+#include <WiFiAP.h>
+#include <WebServer.h>
+/* INCLUDE ESP2SOTA LIBRARY */
+#include <ESP2SOTA.h>
+#include <ESPmDNS.h>
+
+const char* password = "12345678";
+
+WebServer server(80);
 #
 /* SHT3xt
   SDA 21
@@ -169,7 +180,42 @@ void init_gpio() {
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
   Serial.println("GPIO ready...");
 }
+void init_ota(){
+   /* 獲取 MAC 位址並將其轉換為 SSID */
+  String macAddress = WiFi.macAddress();
+  String ssid = "ESP32-" + macAddress.substring(macAddress.length() - 5);
 
+  WiFi.mode(WIFI_AP);  
+  WiFi.softAP(ssid, "12345678");
+  delay(1000);
+  IPAddress IP = IPAddress (10, 10, 10, 1);
+  IPAddress NMask = IPAddress (255, 255, 255, 0);
+  WiFi.softAPConfig(IP, IP, NMask);
+  IPAddress myIP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(myIP);
+
+  /* 初始化 mDNS 服務 */
+  if (!MDNS.begin("esp32")) {
+    Serial.println("錯誤：初始化 mDNS 失敗");
+    while(1) {
+      delay(1000);
+    }
+  }
+  Serial.println("mDNS 初始化完成");
+  
+  /* 設定您自己的網頁進入點 */
+  server.on("/ver", HTTP_GET, []() {
+    String macAddress = WiFi.macAddress();
+    String compileTime = String(__DATE__) + " " + String(__TIME__);
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", "MAC address: " + macAddress + ", Compile time: " + compileTime);
+  });
+
+  /* 初始化 ESP2SOTA 函式庫 */
+  ESP2SOTA.begin(&server);
+  server.begin();
+  }
 void init_interruptGPIO() {
   Serial.println("init interruptGPIO...");
   pinMode(buttonEnter.PIN, INPUT_PULLUP);
@@ -527,12 +573,16 @@ void setup() {
   setPoint_1 = 75;
   setPoint_2 = 75;
   resetButton();
+  init_ota();
   //calculateMoisture(-3.5,-2.5);
   //calculateMoisture(-3.5,-4.5);
   //while(1){}
 }
 
 void loop() {
+    /* HANDLE UPDATE REQUESTS */
+  server.handleClient();
+
   checkButton();
   //oneBucket();
   twoBucket();
