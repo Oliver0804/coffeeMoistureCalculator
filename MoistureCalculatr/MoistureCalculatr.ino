@@ -10,11 +10,11 @@
 /* INCLUDE ESP2SOTA LIBRARY */
 #include <ESP2SOTA.h>
 #include <ESPmDNS.h>
-
+#define bucket 2
 const char* password = "12345678";
 
 WebServer server(80);
-#
+
 /* SHT3xt
   SDA 21
   SCL 22
@@ -23,13 +23,15 @@ WebServer server(80);
 // Relay pins
 const int HEATER_PIN_1 = 26;
 const int FAN_PIN = 25; // 無風扇需控制則使用-1
-const int HEATER_PIN_2 = 33; //two 25
+const int HEATER_PIN_2 = 25; //two 25
 
 const int MOTOR_PIN_1 = 32;
 const int MOTOR_PIN_2 = 32;
 
 const int NULL_PIN = 33;
 // Load cell pins
+// VCC =>5.0v
+
 const int LOADCELL_DOUT_PIN = 13;
 const int LOADCELL_SCK_PIN = 14;
 
@@ -128,9 +130,10 @@ const int MIN_MOISTURE_FOR_HEATER = 20;
 //targetWeight原始重量
 float calculateMoisture(float nowWeight, float initialWeight) {
   // 檢查參數是否合法
-  if (nowWeight <= 0 || initialWeight <= 0 || nowWeight > initialWeight) {
-    Serial.println("Err.");
-    return -1;
+  //if (nowWeight <= 0 || initialWeight <= 0 || nowWeight > initialWeight) {
+  if (nowWeight > initialWeight) {
+    Serial.println("E:nowWeight > initialWeight");
+    //return -1;
   }
 
   // 計算出初始B成分的重量
@@ -143,7 +146,11 @@ float calculateMoisture(float nowWeight, float initialWeight) {
   float lossPercent = (1 - (nowA / (initialWeight * 0.486))) * 100; // 48.6 是 A 成分的初始百分比
   Serial.print("lossPercent: ");
   Serial.println(lossPercent);
-  return lossPercent;
+  if (lossPercent < 0) {
+    return 0;
+  } else {
+    return lossPercent;
+  }
 }
 /*
   float calculateMoisture(float nowWeight, float targetWeight) {
@@ -180,12 +187,12 @@ void init_gpio() {
   pinMode(PROTECTION_SWITCH_PIN, INPUT);
   Serial.println("GPIO ready...");
 }
-void init_ota(){
-   /* 獲取 MAC 位址並將其轉換為 SSID */
+void init_ota() {
+  /* 獲取 MAC 位址並將其轉換為 SSID */
   String macAddress = WiFi.macAddress();
   String ssid = "ESP32-" + macAddress.substring(macAddress.length() - 5);
 
-  WiFi.mode(WIFI_AP);  
+  WiFi.mode(WIFI_AP);
   WiFi.softAP(ssid, "12345678");
   delay(1000);
   IPAddress IP = IPAddress (10, 10, 10, 1);
@@ -198,25 +205,44 @@ void init_ota(){
   /* 初始化 mDNS 服務 */
   if (!MDNS.begin("esp32")) {
     Serial.println("錯誤：初始化 mDNS 失敗");
-    while(1) {
+    while (1) {
       delay(1000);
     }
   }
   Serial.println("mDNS 初始化完成");
-  
+
   /* 設定您自己的網頁進入點 */
   server.on("/ver", HTTP_GET, []() {
     String macAddress = WiFi.macAddress();
     String compileTime = String(__DATE__) + " " + String(__TIME__);
+    String html = "<html><head><title>System Information</title></head><body>";
+    html += "<h1>MAC Address: " + macAddress + ",</p> Compile Time: " + compileTime + "</h1>";
+    html += "<h2>========== " + String(millis() / 1000) + " ==========</h2>";
+    html += "<p>bucket: " + String(bucket) + "</p>";
+    html += "<p>Running Mode: " + String(run_mode) + "</p>";
+    html += "<p>Bucket Run 1: " + String(bucketRun1) + ", Bucket Run 2: " + String(bucketRun2) + "</p>";
+    html += "<p>Show Percentage 1: " + String(show_percnetage_1) + ", Show Percentage 2: " + String(show_percnetage_2) + "</p>";
+    html += "<p>Temperature 1: " + String(temperature_1) + ", Humidity 1: " + String(humidity_1) + "</p>";
+    html += "<p>Temperature 2: " + String(temperature_2) + ", Humidity 2: " + String(humidity_2) + "</p>";
+    html += "<p>Current Weight: " + String(currentWeight) + ", Total Weight: " + String(totalWeight) + "</p>";
+    html += "<p>Go Weight 1: " + String(goWeight_1) + ", Go Weight 2: " + String(goWeight_2) + "</p>";
+    html += "<p>Calculate Moisture Percentage 1: " + String(calculateMoisturePercentage_1) + ", Calculate Moisture Percentage 2: " + String(calculateMoisturePercentage_2) + "</p>";
+    html += "<p>PID Output 1: " + String(output_1) + ", PID Set Point 1: " + String(setPoint_1) + "</p>";
+    html += "<p>PID Output 2: " + String(output_2) + ", PID Set Point 2: " + String(setPoint_2) + "</p>";
+    html += "<p>Window Start Time: " + String(windowStartTime) + "</p>";
+    html += "</body></html>";
+
     server.sendHeader("Connection", "close");
-    server.send(200, "text/plain", "MAC address: " + macAddress + ", Compile time: " + compileTime);
+    server.send(200, "text/html", html);
   });
+
+
 
   /* 初始化 ESP2SOTA 函式庫 */
   ESP2SOTA.begin(&server);
   server.begin();
   Serial.println("http://esp32.local/update");
-  }
+}
 void init_interruptGPIO() {
   Serial.println("init interruptGPIO...");
   pinMode(buttonEnter.PIN, INPUT_PULLUP);
@@ -347,6 +373,7 @@ void resetButton() {
   buttonEnter.numberKeyPresses = 0;
 }
 void checkButton() {
+#if bucket>=1
   if (buttonPlus.pressed) {
     Serial.printf("buttonPlus has been pressed %u times\n", buttonPlus.numberKeyPresses);
     if (buttonPlus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
@@ -360,6 +387,9 @@ void checkButton() {
     buttonPlus.numberKeyPresses = 0;
     buttonPlus.pressed = false;
   }
+#endif
+
+#if bucket>=2
   if (buttonMinus.pressed) {
     Serial.printf("buttonMinus has been pressed %u times\n", buttonMinus.numberKeyPresses);
     if (buttonMinus.numberKeyPresses >= BUTTON_PUSH_COUNT) {
@@ -373,6 +403,9 @@ void checkButton() {
     buttonMinus.numberKeyPresses = 0;
     buttonMinus.pressed = false;
   }
+#endif
+
+#if bucket>=3
   if (buttonEnter.pressed) {
     Serial.printf("buttonEnter has been pressed %u times\n", buttonEnter.numberKeyPresses);
     if (buttonEnter.numberKeyPresses >= BUTTON_PUSH_COUNT) {
@@ -382,6 +415,8 @@ void checkButton() {
     buttonEnter.numberKeyPresses = 0;
     buttonEnter.pressed = false;
   }
+#endif
+
 }
 // 兩組pid控制
 void runPid() {
@@ -390,6 +425,8 @@ void runPid() {
   } else {
     controlMotor1(false);
   }
+
+#if bucket>=1
   if (bucketRun1 == true) {
     //controlMotor1(true);
     controlFan(true);
@@ -411,6 +448,8 @@ void runPid() {
     //controlFan(false);
     //controlMotor1(false);
   }
+#endif
+#if bucket>=2
   if (bucketRun2 == true) {
     //controlMotor2(true);
     Serial.println("2 PID running...");
@@ -431,11 +470,14 @@ void runPid() {
     //controlFan(false);
     //controlMotor2(false);
   }
+#endif
 }
 
 void print_info(int debugLevel) {
   if (debugLevel) {//
-    Serial.print("==========");
+    Serial.print("==");
+    Serial.print(bucket);
+    Serial.print("========");
     Serial.print(String(millis() / 1000));
     Serial.println("==========");
     Serial.print("Running: ");
@@ -481,6 +523,7 @@ void print_info(int debugLevel) {
     Serial.println(setPoint_2);
     Serial.print("windowStartTime: ");
     Serial.println(windowStartTime);
+    delay(100);
   }
 }
 
@@ -495,7 +538,7 @@ int getTempHumi() {
 
 float getWeight() {
   // Read the current weight
-  currentWeight = scale.get_units(10);
+  currentWeight = scale.get_units(5);
   //moisturePercentage = calculateMoisture(currentWeight);
   return currentWeight;
 }
@@ -533,6 +576,7 @@ void oneBucket() {
 void twoBucket() {
   //CS_PIN1,2
   //bucketRun1 = 1; //for test
+#if bucket>=1
   if (bucketRun1) {
     //啟動
     calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);// 計算損失水分百分比
@@ -546,24 +590,29 @@ void twoBucket() {
     show_7seg(int(setPoint_1 * 1), 1, CS_PIN2);//沒觸發顯示溫度
 
   }
+#endif
   //CS_PIN3,4
   //bucketRun2=1;//for test
+#if bucket>=2
+
   if (bucketRun2) {
+
     //啟動
     calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
     //calculateMoisturePercentage_2 = calculateMoisture(90, 100);//for test
     show_percnetage_2 = demoMoisturePercentage - (map(calculateMoisturePercentage_2, 0, 100, 0, demoMoisturePercentage));
     Serial.println(show_percnetage_2);
-    show_7seg(int(show_percnetage_2), 2, CS_PIN3);
+    show_7seg(int(show_percnetage_2 * 10), 2, CS_PIN3);
     show_7seg(int(temperature_2 * 10), 2, CS_PIN4);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN3);//沒觸發顯示重量
     show_7seg(int(setPoint_2 * 1), 1, CS_PIN4);//沒觸發顯示溫度
   }
+#endif
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(230400);
   init_gpio();
   init_interruptGPIO();
   test_gpio(test_init);
@@ -581,7 +630,7 @@ void setup() {
 }
 
 void loop() {
-    /* HANDLE UPDATE REQUESTS */
+  /* HANDLE UPDATE REQUESTS */
   server.handleClient();
 
   checkButton();
