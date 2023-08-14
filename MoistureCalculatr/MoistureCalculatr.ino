@@ -63,6 +63,7 @@ byte segments[MAX_INPUT]; // 每個數位的LED段的狀態
 //int x = 0;
 bool run_mode = 0;//系統工作狀態
 bool bucketRun1, bucketRun2 = 0;
+bool preHeatedGetWeight_1, preHeatedGetWeight_2 = 0;
 //重量相關
 float setMoisturePercentage = 10;//設定損失重量百分比
 float demoMoisturePercentage = 48.6;//廠商測試結果
@@ -89,6 +90,8 @@ unsigned long windowStartTime;
 //溫濕度
 float temperature_1, humidity_1 ;
 float temperature_2, humidity_2 ;
+int pre_heating_1, pre_heating_2 = 0; //pre heated
+int pre_heated_ok_1, pre_heated_ok_2 = 0; //pre heated
 Adafruit_SHT31 sht31_44 = Adafruit_SHT31();
 Adafruit_SHT31 sht31_45 = Adafruit_SHT31();
 
@@ -219,6 +222,8 @@ void init_ota() {
     html += "<h1>MAC Address: " + macAddress + ",</p> Compile Time: " + compileTime + "</h1>";
     html += "<h2>========== " + String(millis() / 1000) + " ==========</h2>";
     html += "<p>bucket: " + String(bucket) + "</p>";
+    html += "<p>pre_heating1: " + String(pre_heating_1) + "</p>";
+    html += "<p>pre_heating2: " + String(pre_heating_2) + "</p>";
     html += "<p>Running Mode: " + String(run_mode) + "</p>";
     html += "<p>Bucket Run 1: " + String(bucketRun1) + ", Bucket Run 2: " + String(bucketRun2) + "</p>";
     html += "<p>Show Percentage 1: " + String(show_percnetage_1) + ", Show Percentage 2: " + String(show_percnetage_2) + "</p>";
@@ -229,7 +234,6 @@ void init_ota() {
     html += "<p>Calculate Moisture Percentage 1: " + String(calculateMoisturePercentage_1) + ", Calculate Moisture Percentage 2: " + String(calculateMoisturePercentage_2) + "</p>";
     html += "<p>PID Output 1: " + String(output_1) + ", PID Set Point 1: " + String(setPoint_1) + "</p>";
     html += "<p>PID Output 2: " + String(output_2) + ", PID Set Point 2: " + String(setPoint_2) + "</p>";
-    html += "<p>Window Start Time: " + String(windowStartTime) + "</p>";
     html += "</body></html>";
 
     server.sendHeader("Connection", "close");
@@ -381,7 +385,7 @@ void checkButton() {
       Serial.println("buttonPlus++++++++");
     }
     if (bucketRun1) {
-      goWeight_1 = getWeight();
+      //goWeight_1 = getWeight();
       myPID1.SetMode(AUTOMATIC);
     }
     buttonPlus.numberKeyPresses = 0;
@@ -521,8 +525,23 @@ void print_info(int debugLevel) {
     Serial.print(output_2);
     Serial.print("\t PID setPoint2: ");
     Serial.println(setPoint_2);
-    Serial.print("windowStartTime: ");
-    Serial.println(windowStartTime);
+
+    Serial.print("pre_heating1: ");
+    Serial.print(pre_heating_1);
+    Serial.print("\t pre_heated1: ");
+    Serial.println(pre_heated_ok_1);
+
+    Serial.print("pre_heating2: ");
+    Serial.print(pre_heating_2);
+    Serial.print("\t pre_heated2: ");
+    Serial.println(pre_heated_ok_2);
+
+    Serial.print("preHeatedGetWeight: ");
+    Serial.print(preHeatedGetWeight_1);
+    Serial.println(preHeatedGetWeight_2);
+
+    //Serial.print("windowStartTime: ");
+    //Serial.println(windowStartTime);
     delay(100);
   }
 }
@@ -575,19 +594,45 @@ void oneBucket() {
 */
 void twoBucket() {
   //CS_PIN1,2
-  //bucketRun1 = 1; //for test
 #if bucket>=1
   if (bucketRun1) {
     //啟動
-    calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);// 計算損失水分百分比
-    //calculateMoisturePercentage_1 = calculateMoisture(50, 100);//for test
-    show_percnetage_1 = demoMoisturePercentage - (map(calculateMoisturePercentage_1, 0, 100, 0, demoMoisturePercentage));
-    Serial.println(show_percnetage_1);
+    //temperature_1=100; //for test
+    if (temperature_1 >= setPoint_1) {
+      if (pre_heating_1 < 300) {
+        pre_heating_1 ++;
+        if (pre_heating_1 >= 280) {
+          pre_heated_ok_1 = 1;
+        }
+      }
+    } else if (temperature_1 <= setPoint_1 - 20)  {
+      if (pre_heating_1 > 1) {
+        pre_heating_1--;
+        if (pre_heating_1 == 0) {
+          pre_heated_ok_1 = 0;
+        }
+      }
+    }
+
+    if (pre_heated_ok_1 >= 1) {
+      if (preHeatedGetWeight_1 == 0) {
+        goWeight_1 = getWeight();
+        preHeatedGetWeight_1 = 1;
+      }
+      calculateMoisturePercentage_1 = calculateMoisture(getWeight(), goWeight_1);// 計算損失水分百分比
+      //calculateMoisturePercentage_1 = calculateMoisture(50, 100);//for test
+      show_percnetage_1 = demoMoisturePercentage - (map(calculateMoisturePercentage_1, 0, 100, 0, demoMoisturePercentage));
+      Serial.println(show_percnetage_1);
+    } else {
+      show_percnetage_1 = demoMoisturePercentage;
+      Serial.println("pre_heated:48.6");
+    }
     show_7seg(int(show_percnetage_1 * 10), 2, CS_PIN1);
     show_7seg(int(temperature_1 * 10), 2, CS_PIN2);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN1);//沒觸發顯示重量
     show_7seg(int(setPoint_1 * 1), 1, CS_PIN2);//沒觸發顯示溫度
+    preHeatedGetWeight_1 = 0;
 
   }
 #endif
@@ -598,15 +643,42 @@ void twoBucket() {
   if (bucketRun2) {
 
     //啟動
-    calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);
-    //calculateMoisturePercentage_2 = calculateMoisture(90, 100);//for test
-    show_percnetage_2 = demoMoisturePercentage - (map(calculateMoisturePercentage_2, 0, 100, 0, demoMoisturePercentage));
-    Serial.println(show_percnetage_2);
+    //temperature_2=100; //for test
+    if (temperature_2 >= setPoint_2) {
+      if (pre_heating_2 < 300) {
+        pre_heating_2 ++;
+        if (pre_heating_2 >= 280) {
+          pre_heated_ok_2 = 1;
+        }
+      }
+    } else if (temperature_2 <= setPoint_2 - 20) {
+      if (pre_heating_2 > 1) {
+        pre_heating_2--;
+        if (pre_heating_2 == 0) {
+          pre_heated_ok_2 = 0;
+        }
+      }
+    }
+
+    if (pre_heated_ok_2 >= 1) {
+      if (preHeatedGetWeight_2 == 0) {
+        goWeight_2 = getWeight();
+        preHeatedGetWeight_2 = 1;
+      }
+      calculateMoisturePercentage_2 = calculateMoisture(getWeight(), goWeight_2);// 計算損失水分百分比
+      //calculateMoisturePercentage_2 = calculateMoisture(50, 100);//for test
+      show_percnetage_2 = demoMoisturePercentage - (map(calculateMoisturePercentage_2, 0, 100, 0, demoMoisturePercentage));
+      Serial.println(show_percnetage_2);
+    } else {
+      show_percnetage_2 = demoMoisturePercentage;
+      Serial.println("pre_heated:48.6");
+    }
     show_7seg(int(show_percnetage_2 * 10), 2, CS_PIN3);
     show_7seg(int(temperature_2 * 10), 2, CS_PIN4);//顯示溫度
   } else {
     show_7seg(int(currentWeight * 1), 1, CS_PIN3);//沒觸發顯示重量
     show_7seg(int(setPoint_2 * 1), 1, CS_PIN4);//沒觸發顯示溫度
+    preHeatedGetWeight_2 = 0;
   }
 #endif
 }
@@ -627,6 +699,8 @@ void setup() {
   //calculateMoisture(-3.5,-2.5);
   //calculateMoisture(-3.5,-4.5);
   //while(1){}
+  //bucketRun1 = 1; //for test
+
 }
 
 void loop() {
